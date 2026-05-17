@@ -405,17 +405,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                       subtitle: 'Parcels matched to your trip.',
                     ),
                     const SizedBox(height: 12),
-                    for (final m in matches)
-                      _MatchCard(
+                    ...matches.map((m) {
+                      final matchOrder = m.shipmentId != null
+                          ? orderByShipment[m.shipmentId!]
+                          : null;
+                      final matchOrderId = matchOrder?.orderId;
+                      return _MatchCard(
                         match: m,
-                        order: m.shipmentId != null
-                            ? orderByShipment[m.shipmentId!]
-                            : null,
+                        order: matchOrder,
                         busy: _busyMatchId == m.matchId ||
-                            _busyOrderId ==
-                                (m.shipmentId != null
-                                    ? orderByShipment[m.shipmentId!]?.orderId
-                                    : null),
+                            (matchOrderId != null &&
+                                _busyOrderId == matchOrderId),
                         onAccept: () => _acceptMatch(m.matchId),
                         onReject: () => _rejectMatch(m.matchId),
                         onMarkInTransit: (oid) => _markInTransit(oid),
@@ -428,7 +428,8 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                             trip: trip,
                           );
                         },
-                      ),
+                      );
+                    }),
                   ],
                   if (showOrdersOnRoute) ...[
                     const SizedBox(height: 24),
@@ -1019,29 +1020,41 @@ class _MatchCard extends StatelessWidget {
               ],
               const SizedBox(height: 12),
               if (match.status == 'OFFERED')
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if ((match.shipmentId ?? '').isNotEmpty)
                       OutlinedButton.icon(
                         onPressed: onViewShipment,
-                        icon: const Icon(Icons.description_outlined, size: 16),
+                        icon:
+                            const Icon(Icons.description_outlined, size: 16),
                         label: const Text('View order details'),
                       ),
-                    FilledButton.icon(
-                      onPressed: busy ? null : onAccept,
-                      icon: const Icon(Icons.check_circle_outline, size: 16),
-                      label: const Text('Accept'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: busy ? null : onReject,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.destructive,
-                        side: BorderSide(color: AppColors.destructive),
-                      ),
-                      icon: const Icon(Icons.cancel_outlined, size: 16),
-                      label: const Text('Reject'),
+                    if ((match.shipmentId ?? '').isNotEmpty)
+                      const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: busy ? null : onAccept,
+                            icon: const Icon(Icons.check_circle_outline,
+                                size: 16),
+                            label: const Text('Accept'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: busy ? null : onReject,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.destructive,
+                              side: BorderSide(color: AppColors.destructive),
+                            ),
+                            icon: const Icon(Icons.cancel_outlined, size: 16),
+                            label: const Text('Reject'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 )
@@ -1413,14 +1426,21 @@ class _AccentLeftCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
       ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 4, color: accentColor),
-            Expanded(child: child),
-          ],
-        ),
+      child: Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 4,
+            child: ColoredBox(color: accentColor),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: child,
+          ),
+        ],
       ),
     );
   }

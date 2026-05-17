@@ -110,16 +110,44 @@ class TripRepository {
       queryParameters: params,
     );
     final raw = res.data;
-    Map<String, dynamic>? pageJson;
-    if (raw is Map<String, dynamic> && raw['content'] is List) {
-      pageJson = raw;
-    } else if (raw is Map<String, dynamic> &&
-        raw['data'] is Map<String, dynamic>) {
-      pageJson = raw['data'] as Map<String, dynamic>;
+
+    if (raw is List) {
+      final trips = raw
+          .whereType<Map<String, dynamic>>()
+          .map(TripDto.fromJson)
+          .toList();
+      return PaginatedResponse<TripDto>(
+        content: trips,
+        totalElements: trips.length,
+        totalPages: trips.isEmpty ? 0 : 1,
+        size: trips.length,
+        number: page,
+      );
     }
-    if (pageJson != null) {
-      return PaginatedResponse.fromJson(pageJson, TripDto.fromJson);
+
+    if (raw is Map<String, dynamic>) {
+      if (raw['content'] is List) {
+        return PaginatedResponse.fromJson(raw, TripDto.fromJson);
+      }
+      final data = raw['data'];
+      if (data is List) {
+        final trips = data
+            .whereType<Map<String, dynamic>>()
+            .map(TripDto.fromJson)
+            .toList();
+        return PaginatedResponse<TripDto>(
+          content: trips,
+          totalElements: trips.length,
+          totalPages: trips.isEmpty ? 0 : 1,
+          size: trips.length,
+          number: page,
+        );
+      }
+      if (data is Map<String, dynamic>) {
+        return PaginatedResponse.fromJson(data, TripDto.fromJson);
+      }
     }
+
     return PaginatedResponse<TripDto>(
       content: const [],
       totalElements: 0,
