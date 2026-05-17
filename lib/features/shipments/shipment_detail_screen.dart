@@ -10,7 +10,10 @@ import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/supported_cities.dart';
 import '../auth/presentation/auth_providers.dart';
+import '../kyc/widgets/kyc_required_dialog.dart';
+import '../payments/widgets/payment_pending_banner.dart';
 import '../repositories_providers.dart';
+import '../trips/trips_list_screen.dart' show myPlannedTripsProvider;
 import 'shipment_trip_match.dart';
 
 final shipmentDetailProvider = FutureProvider.family
@@ -23,13 +26,6 @@ final orderByShipmentProvider = FutureProvider.family
     .autoDispose<ShipmentOrderDto?, String>((ref, shipmentId) async {
   final repo = ref.watch(orderRepositoryProvider);
   return repo.getOrderByShipment(shipmentId);
-});
-
-final myPlannedTripsProvider =
-    FutureProvider.autoDispose<List<TripDto>>((ref) async {
-  final repo = ref.watch(tripRepositoryProvider);
-  final page = await repo.getMyTrips(page: 0, size: 50, status: 'PLANNED');
-  return page.content;
 });
 
 final shipmentMatchesProvider = FutureProvider.family
@@ -99,9 +95,14 @@ bool _addressPlaceholder(String? s) {
 }
 
 class ShipmentDetailScreen extends ConsumerStatefulWidget {
-  const ShipmentDetailScreen({super.key, required this.shipmentId});
+  const ShipmentDetailScreen({
+    super.key,
+    required this.shipmentId,
+    this.paymentPending = false,
+  });
 
   final String shipmentId;
+  final bool paymentPending;
 
   @override
   ConsumerState<ShipmentDetailScreen> createState() =>
@@ -145,6 +146,7 @@ class _ShipmentDetailScreenState extends ConsumerState<ShipmentDetailScreen> {
                     'fromCountryCode': shipment.originCountryCode,
                     'toCity': shipment.destinationCity,
                     'toCountryCode': shipment.destinationCountryCode,
+                    'forShipment': widget.shipmentId,
                   },
                 ).toString();
                 context.push(loc);
@@ -182,6 +184,10 @@ class _ShipmentDetailScreenState extends ConsumerState<ShipmentDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _acceptLoading = false);
+      if (isKycRequiredError(e)) {
+        await showKycRequiredDialog(context, actionLabel: 'accept an order');
+        return;
+      }
       final msg = e is DioException ? dioErrorMessage(e) : '$e';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
@@ -282,6 +288,17 @@ class _ShipmentDetailScreenState extends ConsumerState<ShipmentDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (widget.paymentPending && orderIdForPayment.isNotEmpty) ...[
+                  PaymentPendingBanner(
+                    orderId: orderIdForPayment,
+                    invalidateOnSuccess: () {
+                      ref.invalidate(shipmentDetailProvider(widget.shipmentId));
+                      ref.invalidate(
+                          orderByShipmentProvider(widget.shipmentId));
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

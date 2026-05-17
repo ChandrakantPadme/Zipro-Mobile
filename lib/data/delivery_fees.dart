@@ -31,8 +31,32 @@ class TotalAmountBreakdown {
 }
 
 const Set<String> europeCountryCodes = {
-  'DE', 'FR', 'ES', 'IT', 'NL', 'BE', 'AT', 'PT', 'IE', 'PL', 'SE', 'DK', 'FI',
-  'GR', 'CZ', 'RO', 'HU', 'BG', 'HR', 'SK', 'SI', 'EE', 'LV', 'LT', 'LU', 'MT',
+  'DE',
+  'FR',
+  'ES',
+  'IT',
+  'NL',
+  'BE',
+  'AT',
+  'PT',
+  'IE',
+  'PL',
+  'SE',
+  'DK',
+  'FI',
+  'GR',
+  'CZ',
+  'RO',
+  'HU',
+  'BG',
+  'HR',
+  'SK',
+  'SI',
+  'EE',
+  'LV',
+  'LT',
+  'LU',
+  'MT',
   'CY',
 };
 
@@ -135,7 +159,9 @@ TotalAmountBreakdown getTotalAmount(
     );
   }
   final wf = weightKg >= 2
-      ? (deliveryFee.amount * (math.pow(1.15, weightKg - 1) - 1) * 100).round() / 100
+      ? (deliveryFee.amount * (math.pow(1.15, weightKg - 1) - 1) * 100)
+              .round() /
+          100
       : 0.0;
   final secureFeeInParcelCurrency = parcelValue * 0.05;
   final secureFee = convertToCurrency(

@@ -42,7 +42,8 @@ class TripOfferRepository {
         data: null,
       );
     }
-    return const ApiResponse(success: false, message: 'Invalid response', data: null);
+    return const ApiResponse(
+        success: false, message: 'Invalid response', data: null);
   }
 
   Future<List<TripOfferDto>> offersForTrip(String tripId,

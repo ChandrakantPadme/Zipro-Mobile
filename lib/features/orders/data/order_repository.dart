@@ -95,6 +95,49 @@ class OrderRepository {
     }
   }
 
+  /// POST /v1/orders/{id}/delivery-otp/generate — sends a 6-digit OTP to the
+  /// sender's email so the carrier can use it on `markDelivered`.
+  Future<ApiResponse<void>> generateDeliveryOtp(String orderId) async {
+    final res = await _dio.post<dynamic>(
+      ApiEndpoints.orders.generateDeliveryOtp(orderId),
+      data: {'orderId': orderId},
+    );
+    final body = res.data;
+    return ApiResponse(
+      success: body is Map<String, dynamic>
+          ? body['success'] as bool? ?? true
+          : true,
+      message:
+          body is Map<String, dynamic> ? body['message'] as String? ?? '' : '',
+      data: null,
+    );
+  }
+
+  /// POST /v1/orders/{id}/confirm — used by the buyer to confirm a fulfilled
+  /// order (moves it from CREATED → CONFIRMED).
+  Future<ApiResponse<ShipmentOrderDto?>> confirmOrder(String orderId) async {
+    final res = await _dio.post<dynamic>(
+      ApiEndpoints.orders.confirm(orderId),
+    );
+    return _unwrapOrder(res.data);
+  }
+
+  /// GET /v1/orders/{id}/invoice — returns `{ invoiceUrl }` signed URL.
+  Future<String?> getInvoiceUrl(String orderId) async {
+    final res = await _dio.get<dynamic>(ApiEndpoints.orders.invoice(orderId));
+    final body = res.data;
+    if (body is Map<String, dynamic>) {
+      final url = body['invoiceUrl'] as String?;
+      if (url != null && url.isNotEmpty) return url;
+      final inner = body['data'];
+      if (inner is Map<String, dynamic>) {
+        final innerUrl = inner['invoiceUrl'] as String?;
+        if (innerUrl != null && innerUrl.isNotEmpty) return innerUrl;
+      }
+    }
+    return null;
+  }
+
   Future<ApiResponse<ShipmentOrderDto?>> markInTransit(String orderId) async {
     final res = await _dio.post<dynamic>(
       ApiEndpoints.orders.markInTransit(orderId),
@@ -112,7 +155,8 @@ class OrderRepository {
       ApiEndpoints.orders.markDelivered(orderId),
       data: {
         'otp': otp,
-        if (deliveryPhotoS3Key != null) 'deliveryPhotoS3Key': deliveryPhotoS3Key,
+        if (deliveryPhotoS3Key != null)
+          'deliveryPhotoS3Key': deliveryPhotoS3Key,
       },
     );
     return _unwrapOrder(res.data);

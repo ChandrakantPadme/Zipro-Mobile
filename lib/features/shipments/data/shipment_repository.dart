@@ -43,7 +43,8 @@ class ShipmentRepository {
     Map<String, dynamic>? pageJson;
     if (raw is Map<String, dynamic> && raw['content'] is List) {
       pageJson = raw;
-    } else if (raw is Map<String, dynamic> && raw['data'] is Map<String, dynamic>) {
+    } else if (raw is Map<String, dynamic> &&
+        raw['data'] is Map<String, dynamic>) {
       pageJson = raw['data'] as Map<String, dynamic>;
     }
     if (pageJson != null) {
@@ -112,7 +113,8 @@ class ShipmentRepository {
   }
 
   /// Returns (success, message, optional raw map normalized)
-  static (bool, String, Map<String, dynamic>?) _parseShipmentCreate(dynamic body) {
+  static (bool, String, Map<String, dynamic>?) _parseShipmentCreate(
+      dynamic body) {
     if (body is Map<String, dynamic>) {
       if (body.containsKey('orderId') || body.containsKey('shipmentId')) {
         final m = Map<String, dynamic>.from(body);
@@ -207,9 +209,10 @@ class ShipmentRepository {
     );
   }
 
-  Future<List<MatchableCarrierDto>> getMatchableCarriers(String shipmentId) async {
-    final res =
-        await _dio.get<dynamic>(ApiEndpoints.shipments.matchableCarriers(shipmentId));
+  Future<List<MatchableCarrierDto>> getMatchableCarriers(
+      String shipmentId) async {
+    final res = await _dio
+        .get<dynamic>(ApiEndpoints.shipments.matchableCarriers(shipmentId));
     final raw = res.data;
     if (raw is List) {
       return raw

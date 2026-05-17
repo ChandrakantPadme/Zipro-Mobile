@@ -22,11 +22,9 @@ bool tripMatchesShipment(ShipmentOrderDto shipment, TripDto trip) {
         : trip.fromCountryCode == shipment.originCountryCode &&
             trip.toCountryCode == shipment.destinationCountryCode;
   }
-  final availWeight =
-      (trip.capacityWeightKg ?? 0) - (trip.usedWeightKg ?? 0);
+  final availWeight = (trip.capacityWeightKg ?? 0) - (trip.usedWeightKg ?? 0);
   final weightOk = availWeight >= (shipment.weightKg ?? 0);
-  final availValue =
-      (trip.capacityValueLimit ?? 0) - (trip.usedValue ?? 0);
+  final availValue = (trip.capacityValueLimit ?? 0) - (trip.usedValue ?? 0);
   final valueOk = availValue >= (shipment.declaredValueAmount ?? 0);
   return routeMatch && weightOk && valueOk;
 }

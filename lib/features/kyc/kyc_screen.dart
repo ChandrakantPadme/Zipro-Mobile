@@ -9,6 +9,7 @@ import 'package:mime/mime.dart';
 
 import '../../core/models/kyc_dto.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/ui/create_form_ui.dart';
 import '../auth/presentation/auth_notifier.dart';
 import '../auth/presentation/auth_providers.dart';
 import 'data/upload_repository.dart';
@@ -104,7 +105,10 @@ class _KycScreenState extends ConsumerState<KycScreen> {
   PersonalInfoDraft? _collectPersonal(AuthNotifier auth) {
     final legal = _legalCtrl.text.trim();
     final addr = _addressCtrl.text.trim();
-    if (legal.isEmpty || addr.isEmpty || _country.isEmpty || _postalCtrl.text.trim().isEmpty) {
+    if (legal.isEmpty ||
+        addr.isEmpty ||
+        _country.isEmpty ||
+        _postalCtrl.text.trim().isEmpty) {
       setState(() => _error = 'Please complete personal information');
       return null;
     }
@@ -134,8 +138,9 @@ class _KycScreenState extends ConsumerState<KycScreen> {
       return;
     }
     final name = file.name.isNotEmpty ? file.name : 'passport_upload';
-    final mime = lookupMimeType(name, headerBytes: file.bytes!.take(20).toList()) ??
-        'application/octet-stream';
+    final mime =
+        lookupMimeType(name, headerBytes: file.bytes!.take(20).toList()) ??
+            'application/octet-stream';
     setState(() {
       _busy = true;
       _uploadProgress = 0;
@@ -171,7 +176,7 @@ class _KycScreenState extends ConsumerState<KycScreen> {
   Future<void> _uploadSelfie(UploadRepository up) async {
     final bytes = _selfieBytes;
     if (bytes == null || bytes.isEmpty) {
-      setState(() => _error = 'Take or choose a selfie');
+      setState(() => _error = 'Take a selfie with your camera');
       return;
     }
     final name = _selfieName ?? 'selfie.jpg';
@@ -233,13 +238,14 @@ class _KycScreenState extends ConsumerState<KycScreen> {
       }
     }
 
-    final addressParts =
-        p.address.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    final addressParts = p.address
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
     final street = addressParts.isNotEmpty ? addressParts.first : p.address;
-    final city =
-        addressParts.length > 1 ? addressParts[1] : p.address;
-    final statePart =
-        addressParts.length > 2 ? addressParts[2] : p.country;
+    final city = addressParts.length > 1 ? addressParts[1] : p.address;
+    final statePart = addressParts.length > 2 ? addressParts[2] : p.country;
 
     final userPhone = auth.user?.phone ?? p.phone;
     final userCc = auth.user?.countryCode ?? p.countryCodePhone;
@@ -274,8 +280,7 @@ class _KycScreenState extends ConsumerState<KycScreen> {
               : _routingCtrl.text.trim(),
           'swiftCode':
               _swiftCtrl.text.trim().isEmpty ? null : _swiftCtrl.text.trim(),
-          'iban':
-              _ibanCtrl.text.trim().isEmpty ? null : _ibanCtrl.text.trim(),
+          'iban': _ibanCtrl.text.trim().isEmpty ? null : _ibanCtrl.text.trim(),
         },
       },
     );
@@ -289,13 +294,16 @@ class _KycScreenState extends ConsumerState<KycScreen> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (!res.success) {
-      setState(() => _error = res.message.isNotEmpty ? res.message : 'KYC submit failed');
+      setState(() =>
+          _error = res.message.isNotEmpty ? res.message : 'KYC submit failed');
       return;
     }
     ref.invalidate(kycRecordProvider);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(res.message.isNotEmpty ? res.message : 'KYC submitted')),
+      SnackBar(
+          content:
+              Text(res.message.isNotEmpty ? res.message : 'KYC submitted')),
     );
     context.go('/dashboard');
   }
@@ -323,7 +331,8 @@ class _KycScreenState extends ConsumerState<KycScreen> {
                       kyc.status == 'VERIFIED' ||
                       kyc.status == 'SUBMITTED' ||
                       kyc.status == 'UNDER_REVIEW')) {
-                final pending = {'SUBMITTED', 'UNDER_REVIEW'}.contains(kyc.status);
+                final pending =
+                    {'SUBMITTED', 'UNDER_REVIEW'}.contains(kyc.status);
                 return Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -338,7 +347,8 @@ class _KycScreenState extends ConsumerState<KycScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text('Status: ${kyc.status}'),
-                      if (kyc.rejectionReason != null && kyc.rejectionReason!.isNotEmpty)
+                      if (kyc.rejectionReason != null &&
+                          kyc.rejectionReason!.isNotEmpty)
                         Text('Reason: ${kyc.rejectionReason}',
                             style: TextStyle(color: AppColors.destructive)),
                     ],
@@ -348,10 +358,14 @@ class _KycScreenState extends ConsumerState<KycScreen> {
               if (!_profileSeeded && auth.user != null) {
                 _profileSeeded = true;
                 final u = auth.user!;
-                if (u.email != null && u.email!.isNotEmpty && _emailCtrl.text.isEmpty) {
+                if (u.email != null &&
+                    u.email!.isNotEmpty &&
+                    _emailCtrl.text.isEmpty) {
                   _emailCtrl.text = u.email!;
                 }
-                if (u.phone != null && u.phone!.isNotEmpty && _phoneCtrl.text.isEmpty) {
+                if (u.phone != null &&
+                    u.phone!.isNotEmpty &&
+                    _phoneCtrl.text.isEmpty) {
                   _phoneCtrl.text = u.phone!;
                 }
                 final cc = u.countryCode;
@@ -377,7 +391,8 @@ class _KycScreenState extends ConsumerState<KycScreen> {
                         if (_uploadProgress > 0 && _uploadProgress < 1)
                           Padding(
                             padding: const EdgeInsets.only(top: 12),
-                            child: LinearProgressIndicator(value: _uploadProgress),
+                            child:
+                                LinearProgressIndicator(value: _uploadProgress),
                           ),
                       ],
                     ),
@@ -404,58 +419,68 @@ class _KycScreenState extends ConsumerState<KycScreen> {
           if (_wizardStep == 0) ...[
             TextField(
               controller: _legalCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Legal name (as on passport)',
+              textInputAction: TextInputAction.next,
+              decoration: CreateFormUi.inputDecoration(
+                label: 'Legal name (as on passport)',
               ),
             ),
+            const SizedBox(height: CreateFormUi.fieldGap),
             TextField(
               controller: _addressCtrl,
-              decoration: const InputDecoration(labelText: 'Full address'),
-              maxLines: 2,
-            ),
-            InputDecorator(
-              decoration: const InputDecoration(labelText: 'Country'),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  isExpanded: true,
-                  value: _country,
-                  items: [
-                    for (final c in _countries)
-                      DropdownMenuItem(value: c.$1, child: Text(c.$2)),
-                  ],
-                  onChanged: (v) => setState(() => _country = v ?? 'IN'),
-                ),
+              decoration: CreateFormUi.inputDecoration(
+                label: 'Full address',
+                alignLabelWithHint: true,
               ),
+              maxLines: 2,
+              textInputAction: TextInputAction.next,
             ),
+            const SizedBox(height: CreateFormUi.fieldGap),
+            DropdownButtonFormField<String>(
+              decoration: CreateFormUi.inputDecoration(label: 'Country'),
+              value: _country,
+              items: [
+                for (final c in _countries)
+                  DropdownMenuItem(value: c.$1, child: Text(c.$2)),
+              ],
+              onChanged: (v) => setState(() => _country = v ?? 'IN'),
+            ),
+            const SizedBox(height: CreateFormUi.fieldGap),
             TextField(
               controller: _postalCtrl,
-              decoration: const InputDecoration(labelText: 'Postal code'),
+              textInputAction: TextInputAction.next,
+              decoration: CreateFormUi.inputDecoration(label: 'Postal code'),
             ),
+            const SizedBox(height: CreateFormUi.fieldGap),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
                   width: 96,
                   child: TextField(
                     controller: _phoneCcCtrl,
-                    decoration: const InputDecoration(labelText: 'Code'),
+                    textInputAction: TextInputAction.next,
+                    decoration: CreateFormUi.inputDecoration(label: 'Code'),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: CreateFormUi.fieldGap),
                 Expanded(
                   child: TextField(
                     controller: _phoneCtrl,
                     keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(labelText: 'Phone'),
+                    textInputAction: TextInputAction.next,
+                    decoration: CreateFormUi.inputDecoration(label: 'Phone'),
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: CreateFormUi.fieldGap),
             TextField(
               controller: _emailCtrl,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email'),
+              textInputAction: TextInputAction.done,
+              decoration: CreateFormUi.inputDecoration(label: 'Email'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: CreateFormUi.sectionGap),
             FilledButton(
               onPressed: () {
                 final p = _collectPersonal(auth);
@@ -467,9 +492,10 @@ class _KycScreenState extends ConsumerState<KycScreen> {
           if (_wizardStep == 1) ...[
             TextField(
               controller: _passportNumberCtrl,
-              decoration: const InputDecoration(labelText: 'Passport number'),
+              decoration:
+                  CreateFormUi.inputDecoration(label: 'Passport number'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: CreateFormUi.fieldGap),
             OutlinedButton.icon(
               onPressed: () async {
                 final r = await FilePicker.platform.pickFiles(
@@ -496,7 +522,7 @@ class _KycScreenState extends ConsumerState<KycScreen> {
                     : _passportFile!.name,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: CreateFormUi.sectionGap),
             Row(
               children: [
                 TextButton(
@@ -524,13 +550,14 @@ class _KycScreenState extends ConsumerState<KycScreen> {
             ),
           ],
           if (_wizardStep == 2) ...[
-            const Text('Take or choose a clear selfie holding your ID.'),
-            const SizedBox(height: 12),
+            const Text('Take a clear selfie holding your ID.'),
+            const SizedBox(height: CreateFormUi.fieldGap),
             OutlinedButton.icon(
               onPressed: () async {
-                final p = ImagePicker();
-                final x = await p.pickImage(
-                  source: ImageSource.gallery,
+                final picker = ImagePicker();
+                final x = await picker.pickImage(
+                  source: ImageSource.camera,
+                  preferredCameraDevice: CameraDevice.front,
                   maxWidth: 1600,
                   imageQuality: 85,
                 );
@@ -538,20 +565,41 @@ class _KycScreenState extends ConsumerState<KycScreen> {
                   final b = await x.readAsBytes();
                   setState(() {
                     _selfieBytes = b;
-                    _selfieName = x.name;
+                    _selfieName = x.name.isNotEmpty ? x.name : 'selfie.jpg';
                     _error = null;
                   });
                 }
               },
               icon: const Icon(Icons.camera_alt_outlined),
-              label: const Text('Choose selfie'),
+              label: const Text('Take selfie'),
             ),
             if (_selfieBytes != null)
               Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Text('${_selfieBytes!.length} bytes selected'),
+                padding: const EdgeInsets.only(top: CreateFormUi.fieldGap),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Selfie captured. Tap Continue to upload, or retake.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.mutedForeground,
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        onPressed: () => setState(() {
+                          _selfieBytes = null;
+                          _selfieName = null;
+                        }),
+                        child: const Text('Retake selfie'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            const SizedBox(height: 20),
+            const SizedBox(height: CreateFormUi.sectionGap),
             Row(
               children: [
                 TextButton(
@@ -569,75 +617,87 @@ class _KycScreenState extends ConsumerState<KycScreen> {
             ),
           ],
           if (_wizardStep == 3) ...[
-            InputDecorator(
-              decoration: const InputDecoration(labelText: 'Bank country'),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  isExpanded: true,
-                  value: _bankCountryIso,
-                  items: [
-                    for (final c in _countries)
-                      DropdownMenuItem(value: c.$1, child: Text(c.$2)),
-                  ],
-                  onChanged: (v) =>
-                      setState(() => _bankCountryIso = v ?? 'IN'),
-                ),
-              ),
+            DropdownButtonFormField<String>(
+              decoration: CreateFormUi.inputDecoration(label: 'Bank country'),
+              value: _bankCountryIso,
+              items: [
+                for (final c in _countries)
+                  DropdownMenuItem(value: c.$1, child: Text(c.$2)),
+              ],
+              onChanged: (v) =>
+                  setState(() => _bankCountryIso = v ?? 'IN'),
             ),
             if (_bankCountryIso == 'IN') ...[
+              const SizedBox(height: CreateFormUi.fieldGap),
               CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
                 value: _indiaUpi,
                 onChanged: (v) => setState(() => _indiaUpi = v ?? false),
                 title: const Text('Use UPI'),
               ),
-              if (_indiaUpi)
+              if (_indiaUpi) ...[
+                const SizedBox(height: CreateFormUi.fieldGap),
                 TextField(
                   controller: _upiCtrl,
-                  decoration: const InputDecoration(labelText: 'UPI ID'),
-                )
-              else ...[
+                  decoration: CreateFormUi.inputDecoration(label: 'UPI ID'),
+                ),
+              ] else ...[
+                const SizedBox(height: CreateFormUi.fieldGap),
                 TextField(
                   controller: _bankNameCtrl,
-                  decoration: const InputDecoration(labelText: 'Bank name'),
+                  decoration: CreateFormUi.inputDecoration(label: 'Bank name'),
                 ),
+                const SizedBox(height: CreateFormUi.fieldGap),
                 TextField(
                   controller: _holderCtrl,
                   decoration:
-                      const InputDecoration(labelText: 'Account holder'),
+                      CreateFormUi.inputDecoration(label: 'Account holder'),
                 ),
+                const SizedBox(height: CreateFormUi.fieldGap),
                 TextField(
                   controller: _accountCtrl,
-                  decoration: const InputDecoration(labelText: 'Account number'),
+                  decoration:
+                      CreateFormUi.inputDecoration(label: 'Account number'),
                 ),
               ],
             ] else ...[
+              const SizedBox(height: CreateFormUi.fieldGap),
               TextField(
                 controller: _bankNameCtrl,
-                decoration: const InputDecoration(labelText: 'Bank name'),
+                decoration: CreateFormUi.inputDecoration(label: 'Bank name'),
               ),
+              const SizedBox(height: CreateFormUi.fieldGap),
               TextField(
                 controller: _holderCtrl,
                 decoration:
-                    const InputDecoration(labelText: 'Account holder'),
+                    CreateFormUi.inputDecoration(label: 'Account holder'),
               ),
+              const SizedBox(height: CreateFormUi.fieldGap),
               TextField(
                 controller: _accountCtrl,
-                decoration: const InputDecoration(labelText: 'Account / IBAN'),
+                decoration:
+                    CreateFormUi.inputDecoration(label: 'Account / IBAN'),
               ),
+              const SizedBox(height: CreateFormUi.fieldGap),
               TextField(
                 controller: _ibanCtrl,
-                decoration: const InputDecoration(labelText: 'IBAN (if applicable)'),
+                decoration: CreateFormUi.inputDecoration(
+                  label: 'IBAN (if applicable)',
+                ),
               ),
+              const SizedBox(height: CreateFormUi.fieldGap),
               TextField(
                 controller: _swiftCtrl,
-                decoration: const InputDecoration(labelText: 'SWIFT/BIC'),
+                decoration: CreateFormUi.inputDecoration(label: 'SWIFT/BIC'),
               ),
+              const SizedBox(height: CreateFormUi.fieldGap),
               TextField(
                 controller: _routingCtrl,
-                decoration: const InputDecoration(labelText: 'Routing (US etc.)'),
+                decoration:
+                    CreateFormUi.inputDecoration(label: 'Routing (US etc.)'),
               ),
             ],
-            const SizedBox(height: 20),
+            const SizedBox(height: CreateFormUi.sectionGap),
             Row(
               children: [
                 TextButton(

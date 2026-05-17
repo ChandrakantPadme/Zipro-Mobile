@@ -50,16 +50,14 @@ class ShipmentsListScreen extends ConsumerWidget {
                   ),
                   subtitle: Text('${s.status} · ${s.description}', maxLines: 2),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () =>
-                      context.push('/shipment/${s.primaryId}'),
+                  onTap: () => context.push('/shipment/${s.primaryId}'),
                 );
               },
             ),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) =>
-            Center(child: Text(dioErrorMessage(e))),
+        error: (e, _) => Center(child: Text(dioErrorMessage(e))),
       ),
     );
   }

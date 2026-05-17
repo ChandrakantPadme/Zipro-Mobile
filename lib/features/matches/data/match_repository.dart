@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 
 import '../../../core/models/api_models.dart';
@@ -10,16 +12,37 @@ class MatchRepository {
   final Dio _dio;
 
   List<MatchDto> _listFrom(dynamic raw) {
-    List<dynamic> list = const [];
-    if (raw is List) list = raw;
-    if (raw is Map<String, dynamic>) {
-      final d = raw['data'];
-      if (d is List) list = d;
+    dynamic decoded = raw;
+    if (raw is String) {
+      final s = raw.trim();
+      if (s.isEmpty) return const [];
+      try {
+        decoded = jsonDecode(s);
+      } catch (_) {
+        return const [];
+      }
     }
-    return list
-        .whereType<Map<String, dynamic>>()
-        .map(MatchDto.fromJson)
-        .toList();
+    List<dynamic> list = const [];
+    if (decoded is List) {
+      list = decoded;
+    } else if (decoded is Map) {
+      final map = Map<String, dynamic>.from(decoded);
+      final d = map['data'];
+      if (d is List) {
+        list = d;
+      } else if (d is Map && d['content'] is List) {
+        list = d['content'] as List;
+      } else if (map['content'] is List) {
+        list = map['content'] as List;
+      }
+    }
+    final out = <MatchDto>[];
+    for (final item in list) {
+      if (item is Map) {
+        out.add(MatchDto.fromJson(Map<String, dynamic>.from(item)));
+      }
+    }
+    return out;
   }
 
   Future<List<MatchDto>> getMyMatches() async {
@@ -39,7 +62,9 @@ class MatchRepository {
       return _listFrom(res.data);
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
-      if (status == 401 || status == 403 || status == 404) {
+      // 403/404: not sender or unknown shipment — treat as no matches (same as web).
+      // Do not swallow 401; rely on auth interceptor + visible error.
+      if (status == 403 || status == 404) {
         return const [];
       }
       rethrow;
@@ -47,8 +72,8 @@ class MatchRepository {
   }
 
   /// Returns matches for [tripId]. Backend restricts this endpoint to the
-  /// trip owner, so non-owners hit 401/403/404. Treat those as no matches
-  /// (mirrors the web `useMatchesForTrip` default behaviour).
+  /// trip owner, so non-owners hit 403/404. Those map to an empty list; 401 is not
+  /// swallowed so auth failures surface.
   Future<List<MatchDto>> getMatchesForTrip(String tripId) async {
     try {
       final res = await _dio.get<dynamic>(
@@ -57,7 +82,9 @@ class MatchRepository {
       return _listFrom(res.data);
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
-      if (status == 401 || status == 403 || status == 404) {
+      // 403/404: not trip owner or unknown trip — treat as no matches (same as web).
+      // Do not swallow 401; rely on auth interceptor + visible error.
+      if (status == 403 || status == 404) {
         return const [];
       }
       rethrow;
@@ -93,9 +120,8 @@ class MatchRepository {
       success: body is Map<String, dynamic>
           ? body['success'] as bool? ?? false
           : false,
-      message: body is Map<String, dynamic>
-          ? body['message'] as String? ?? ''
-          : '',
+      message:
+          body is Map<String, dynamic> ? body['message'] as String? ?? '' : '',
       data: null,
     );
   }

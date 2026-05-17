@@ -10,7 +10,8 @@ class UploadRepository {
   final Dio _authDio;
   static final Dio _presignedPut = Dio();
 
-  Future<S3UploadUrlResponse> _requestPresignedUrl(S3UploadUrlRequest request) async {
+  Future<S3UploadUrlResponse> _requestPresignedUrl(
+      S3UploadUrlRequest request) async {
     final res = await _authDio.post<dynamic>(
       ApiEndpoints.s3.getUploadUrl,
       data: request.toJson(),
@@ -40,6 +41,40 @@ class UploadRepository {
     required String contentType,
     ProgressCallback? onSendProgress,
   }) async {
+    final res = await _uploadAndGetMeta(
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
+      onSendProgress: onSendProgress,
+    );
+    final bucket = res.bucket ?? 'zipro-file-uploads';
+    return 's3://$bucket/${res.fileKey}';
+  }
+
+  /// Returns the raw S3 `fileKey` (no `s3://bucket/` prefix). Mirrors web
+  /// `useUploadFile` which exposes `fileKey` for `receiptS3Key` /
+  /// `deliveryPhotoS3Key` payloads.
+  Future<String> uploadBytesAndGetFileKey({
+    required List<int> bytes,
+    required String fileName,
+    required String contentType,
+    ProgressCallback? onSendProgress,
+  }) async {
+    final res = await _uploadAndGetMeta(
+      bytes: bytes,
+      fileName: fileName,
+      contentType: contentType,
+      onSendProgress: onSendProgress,
+    );
+    return res.fileKey;
+  }
+
+  Future<S3UploadUrlResponse> _uploadAndGetMeta({
+    required List<int> bytes,
+    required String fileName,
+    required String contentType,
+    ProgressCallback? onSendProgress,
+  }) async {
     final urlData = await _requestPresignedUrl(
       S3UploadUrlRequest(fileName: fileName, contentType: contentType),
     );
@@ -52,7 +87,6 @@ class UploadRepository {
       ),
       onSendProgress: onSendProgress,
     );
-    final bucket = urlData.bucket ?? 'zipro-file-uploads';
-    return 's3://$bucket/${urlData.fileKey}';
+    return urlData;
   }
 }

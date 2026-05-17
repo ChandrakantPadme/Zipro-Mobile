@@ -8,9 +8,11 @@ import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
 import '../repositories_providers.dart';
 
-final myOrdersPairProvider =
-    FutureProvider.autoDispose<({List<ShipmentOrderDto> buyer, List<ShipmentOrderDto> traveler})>(
-        (ref) async {
+final myOrdersPairProvider = FutureProvider.autoDispose<
+    ({
+      List<ShipmentOrderDto> buyer,
+      List<ShipmentOrderDto> traveler
+    })>((ref) async {
   final repo = ref.watch(orderRepositoryProvider);
   final buyer = await repo.getMyOrdersBuyer();
   final traveler = await repo.getMyOrdersTraveler();
@@ -70,6 +72,7 @@ class OrdersListScreen extends ConsumerWidget {
                       children: [
                         _OrdersListPane(
                           orders: pair.buyer,
+                          isBuyer: true,
                           onRefresh: () async {
                             ref.invalidate(myOrdersPairProvider);
                           },
@@ -77,6 +80,7 @@ class OrdersListScreen extends ConsumerWidget {
                         ),
                         _OrdersListPane(
                           orders: pair.traveler,
+                          isBuyer: false,
                           onRefresh: () async {
                             ref.invalidate(myOrdersPairProvider);
                           },
@@ -100,13 +104,21 @@ class OrdersListScreen extends ConsumerWidget {
 class _OrdersListPane extends StatelessWidget {
   const _OrdersListPane({
     required this.orders,
+    required this.isBuyer,
     required this.onRefresh,
     required this.amountForDisplay,
   });
 
   final List<ShipmentOrderDto> orders;
+  final bool isBuyer;
   final Future<void> Function() onRefresh;
   final num? Function(ShipmentOrderDto o) amountForDisplay;
+
+  static const _payableStatuses = {
+    'CREATED',
+    'AWAITING_PAYMENT',
+    'PAYMENT_PENDING',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -138,8 +150,9 @@ class _OrdersListPane extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (_, i) {
           final order = orders[i];
-          final short =
-              order.orderId.length > 8 ? order.orderId.substring(order.orderId.length - 8) : order.orderId;
+          final short = order.orderId.length > 8
+              ? order.orderId.substring(order.orderId.length - 8)
+              : order.orderId;
           final amt = amountForDisplay(order);
           final cur = order.currency ?? '';
           return Card(
@@ -170,23 +183,34 @@ class _OrdersListPane extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     'Total: $cur ${amt ?? '—'}',
-                    style:
-                        TextStyle(fontSize: 13, color: AppColors.mutedForeground),
+                    style: TextStyle(
+                        fontSize: 13, color: AppColors.mutedForeground),
                   ),
                   if (order.createdAt != null && order.createdAt!.isNotEmpty)
                     Text(
                       'Created: ${_fmt(order.createdAt)}',
-                      style:
-                          TextStyle(fontSize: 13, color: AppColors.mutedForeground),
+                      style: TextStyle(
+                          fontSize: 13, color: AppColors.mutedForeground),
                     ),
                   const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: OutlinedButton(
-                      onPressed: () =>
-                          context.push('/order/${order.orderId}'),
-                      child: const Text('View Details'),
-                    ),
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (isBuyer && _payableStatuses.contains(order.status))
+                        FilledButton.icon(
+                          onPressed: () =>
+                              context.push('/order/${order.orderId}/pay'),
+                          icon: const Icon(Icons.credit_card, size: 16),
+                          label: const Text('Pay now'),
+                        ),
+                      OutlinedButton(
+                        onPressed: () =>
+                            context.push('/order/${order.orderId}'),
+                        child: const Text('View Details'),
+                      ),
+                    ],
                   ),
                 ],
               ),

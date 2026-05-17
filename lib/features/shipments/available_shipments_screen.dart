@@ -70,8 +70,8 @@ class AvailableShipmentsScreen extends ConsumerWidget {
                 Text(
                   'Parcel requests from others will appear here when posted.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: AppColors.mutedForeground, fontSize: 13),
+                  style:
+                      TextStyle(color: AppColors.mutedForeground, fontSize: 13),
                 ),
               ],
             );
@@ -86,8 +86,8 @@ class AvailableShipmentsScreen extends ConsumerWidget {
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (_, i) {
                 final s = data.items[i];
-                final origin = cityCountryLabel(
-                    s.originCity, s.originCountryCode);
+                final origin =
+                    cityCountryLabel(s.originCity, s.originCountryCode);
                 final dest = cityCountryLabel(
                     s.destinationCity, s.destinationCountryCode);
                 final route = '$origin → $dest';
@@ -157,7 +157,8 @@ class AvailableShipmentsScreen extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(width: 4),
-                          Icon(Icons.chevron_right, color: AppColors.mutedForeground),
+                          Icon(Icons.chevron_right,
+                              color: AppColors.mutedForeground),
                         ],
                       ),
                     ),

@@ -37,9 +37,8 @@ class PaymentRepository {
       success: body is Map<String, dynamic>
           ? body['success'] as bool? ?? false
           : false,
-      message: body is Map<String, dynamic>
-          ? body['message'] as String? ?? ''
-          : '',
+      message:
+          body is Map<String, dynamic> ? body['message'] as String? ?? '' : '',
       data: null,
     );
   }

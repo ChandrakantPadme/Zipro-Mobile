@@ -5,7 +5,8 @@ import 'package:flutter/foundation.dart';
 class AppConfig {
   AppConfig._();
 
-  static const String _defaultBaseUrl = 'https://ac4c-2401-4900-881c-9f95-4ce8-a337-80ce-597a.ngrok-free.app';
+  static const String _defaultBaseUrl =
+      'https://f88e-116-74-198-237.ngrok-free.app';
 
   static String get baseUrl {
     const fromEnv = String.fromEnvironment('API_BASE_URL', defaultValue: '');
@@ -17,8 +18,7 @@ class AppConfig {
 
   /// Razorpay key id fallback when backend omits it on payment order response.
   static String get razorpayKeyId {
-    const fromEnv =
-        String.fromEnvironment('RAZORPAY_KEY_ID', defaultValue: '');
+    const fromEnv = String.fromEnvironment('RAZORPAY_KEY_ID', defaultValue: '');
     return fromEnv;
   }
 

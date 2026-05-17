@@ -9,7 +9,9 @@ import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/supported_cities.dart';
 import '../auth/presentation/auth_providers.dart';
+import '../kyc/widgets/kyc_required_dialog.dart';
 import '../repositories_providers.dart';
+import '../shipments/widgets/shipment_request_review_sheet.dart';
 import 'trips_list_screen.dart';
 
 final tripProvider =
@@ -17,15 +19,37 @@ final tripProvider =
   return ref.watch(tripRepositoryProvider).getTrip(tripId);
 });
 
-final tripOffersProvider =
-    FutureProvider.family.autoDispose<List<TripOfferDto>, String>(
-        (ref, tripId) async {
+final tripOffersProvider = FutureProvider.family
+    .autoDispose<List<TripOfferDto>, String>((ref, tripId) async {
   return ref.watch(tripOfferRepositoryProvider).offersForTrip(tripId);
 });
 
-final tripMatchesProvider =
-    FutureProvider.family.autoDispose<List<MatchDto>, String>((ref, tripId) {
-  return ref.watch(matchRepositoryProvider).getMatchesForTrip(tripId);
+/// Matches for this trip when the signed-in user owns it.
+///
+/// Watches [tripProvider] and [authNotifierProvider] so we refetch after trip/auth
+/// resolve. Avoids empty matches when ownership was first computed inside nested
+/// `asyncTrip.when(data:)` (Riverpod subscription timing).
+final tripMatchesForTripProvider =
+    FutureProvider.family.autoDispose<List<MatchDto>, String>((ref, tripId) async {
+  ref.watch(authNotifierProvider);
+  final userId = ref.read(authNotifierProvider).user?.userId;
+
+  final TripDto? trip;
+  try {
+    trip = await ref.watch(tripProvider(tripId).future);
+  } catch (_) {
+    return const [];
+  }
+  if (trip == null) return const [];
+
+  final travelerId = trip.travelerUserId?.trim();
+  final isOwner = userId != null &&
+      travelerId != null &&
+      travelerId.isNotEmpty &&
+      travelerId == userId;
+  if (!isOwner) return const [];
+
+  return ref.read(matchRepositoryProvider).getMatchesForTrip(tripId);
 });
 
 final ordersByTripProvider = FutureProvider.family
@@ -35,12 +59,14 @@ final ordersByTripProvider = FutureProvider.family
 
 class _OrdersOnRouteParams {
   const _OrdersOnRouteParams({
+    required this.tripId,
     required this.fromCity,
     required this.fromCountryCode,
     required this.toCity,
     required this.toCountryCode,
   });
 
+  final String tripId;
   final String fromCity;
   final String fromCountryCode;
   final String toCity;
@@ -50,6 +76,7 @@ class _OrdersOnRouteParams {
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     return other is _OrdersOnRouteParams &&
+        other.tripId == tripId &&
         other.fromCity == fromCity &&
         other.fromCountryCode == fromCountryCode &&
         other.toCity == toCity &&
@@ -58,6 +85,7 @@ class _OrdersOnRouteParams {
 
   @override
   int get hashCode => Object.hash(
+        tripId,
         fromCity,
         fromCountryCode,
         toCity,
@@ -66,8 +94,7 @@ class _OrdersOnRouteParams {
 }
 
 final _ordersOnRouteProvider = FutureProvider.family
-    .autoDispose<List<ShipmentOrderDto>, _OrdersOnRouteParams>(
-        (ref, p) async {
+    .autoDispose<List<ShipmentOrderDto>, _OrdersOnRouteParams>((ref, p) async {
   final repo = ref.watch(shipmentRepositoryProvider);
   final useCity = p.fromCity.trim().isNotEmpty && p.toCity.trim().isNotEmpty;
   if (useCity) {
@@ -106,30 +133,41 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   String? _busyShipmentId;
   String? _busyOrderId;
 
-  Future<void> _runWithSnack(Future<void> Function() action) async {
+  Future<void> _runWithSnack(
+    Future<void> Function() action, {
+    String? kycActionLabel,
+  }) async {
     try {
       await action();
     } catch (e) {
       if (!mounted) return;
+      if (kycActionLabel != null && isKycRequiredError(e)) {
+        await showKycRequiredDialog(context, actionLabel: kycActionLabel);
+        return;
+      }
       final msg = e is DioException ? dioErrorMessage(e) : '$e';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
+  }
+
+  void _invalidateTripMatchesListeners() {
+    ref.invalidate(tripMatchesForTripProvider(widget.tripId));
   }
 
   Future<void> _startTrip() async {
     if (_starting) return;
     setState(() => _starting = true);
     await _runWithSnack(() async {
-      final res = await ref
-          .read(tripRepositoryProvider)
-          .startTrip(widget.tripId);
+      final res =
+          await ref.read(tripRepositoryProvider).startTrip(widget.tripId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(res.message.isNotEmpty ? res.message : 'OK')),
       );
       ref.invalidate(tripProvider(widget.tripId));
       ref.invalidate(myTripsProvider);
-      ref.invalidate(tripMatchesProvider(widget.tripId));
+      ref.invalidate(myPlannedTripsProvider);
+      _invalidateTripMatchesListeners();
     });
     if (!mounted) return;
     setState(() => _starting = false);
@@ -138,18 +176,20 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   Future<void> _acceptMatch(String matchId) async {
     if (_busyMatchId != null) return;
     setState(() => _busyMatchId = matchId);
-    await _runWithSnack(() async {
-      final res = await ref
-          .read(matchRepositoryProvider)
-          .acceptMatch(matchId);
-      if (!mounted) return;
-      if (res.message.isNotEmpty) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(res.message)));
-      }
-      ref.invalidate(tripMatchesProvider(widget.tripId));
-      ref.invalidate(ordersByTripProvider(widget.tripId));
-    });
+    await _runWithSnack(
+      () async {
+        final res =
+            await ref.read(matchRepositoryProvider).acceptMatch(matchId);
+        if (!mounted) return;
+        if (res.message.isNotEmpty) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(res.message)));
+        }
+        _invalidateTripMatchesListeners();
+        ref.invalidate(ordersByTripProvider(widget.tripId));
+      },
+      kycActionLabel: 'accept an order request',
+    );
     if (!mounted) return;
     setState(() => _busyMatchId = null);
   }
@@ -157,17 +197,19 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   Future<void> _rejectMatch(String matchId) async {
     if (_busyMatchId != null) return;
     setState(() => _busyMatchId = matchId);
-    await _runWithSnack(() async {
-      final res = await ref
-          .read(matchRepositoryProvider)
-          .rejectMatch(matchId);
-      if (!mounted) return;
-      if (res.message.isNotEmpty) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(res.message)));
-      }
-      ref.invalidate(tripMatchesProvider(widget.tripId));
-    });
+    await _runWithSnack(
+      () async {
+        final res =
+            await ref.read(matchRepositoryProvider).rejectMatch(matchId);
+        if (!mounted) return;
+        if (res.message.isNotEmpty) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(res.message)));
+        }
+        _invalidateTripMatchesListeners();
+      },
+      kycActionLabel: 'reject an order request',
+    );
     if (!mounted) return;
     setState(() => _busyMatchId = null);
   }
@@ -175,23 +217,27 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   Future<void> _acceptShipmentOnRoute(String shipmentId) async {
     if (_busyShipmentId != null) return;
     setState(() => _busyShipmentId = shipmentId);
-    await _runWithSnack(() async {
-      final res = await ref.read(tripRepositoryProvider).acceptShipmentForTrip(
-            tripId: widget.tripId,
-            shipmentId: shipmentId,
-          );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(res.success
-              ? (res.message.isNotEmpty ? res.message : 'Order accepted')
-              : (res.message.isNotEmpty ? res.message : 'Failed to accept')),
-        ),
-      );
-      ref.invalidate(tripMatchesProvider(widget.tripId));
-      ref.invalidate(ordersByTripProvider(widget.tripId));
-      _invalidateOrdersOnRoute();
-    });
+    await _runWithSnack(
+      () async {
+        final res =
+            await ref.read(tripRepositoryProvider).acceptShipmentForTrip(
+                  tripId: widget.tripId,
+                  shipmentId: shipmentId,
+                );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res.success
+                ? (res.message.isNotEmpty ? res.message : 'Order accepted')
+                : (res.message.isNotEmpty ? res.message : 'Failed to accept')),
+          ),
+        );
+        _invalidateTripMatchesListeners();
+        ref.invalidate(ordersByTripProvider(widget.tripId));
+        _invalidateOrdersOnRoute();
+      },
+      kycActionLabel: 'accept an order',
+    );
     if (!mounted) return;
     setState(() => _busyShipmentId = null);
   }
@@ -200,14 +246,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     if (_busyOrderId != null) return;
     setState(() => _busyOrderId = orderId);
     await _runWithSnack(() async {
-      final res = await ref
-          .read(orderRepositoryProvider)
-          .markInTransit(orderId);
+      final res =
+          await ref.read(orderRepositoryProvider).markInTransit(orderId);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content:
-                Text(res.message.isNotEmpty ? res.message : 'Marked in transit')),
+            content: Text(
+                res.message.isNotEmpty ? res.message : 'Marked in transit')),
       );
       ref.invalidate(ordersByTripProvider(widget.tripId));
     });
@@ -219,6 +264,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     final trip = ref.read(tripProvider(widget.tripId)).asData?.value;
     if (trip == null) return;
     ref.invalidate(_ordersOnRouteProvider(_OrdersOnRouteParams(
+      tripId: widget.tripId,
       fromCity: trip.fromCity,
       fromCountryCode: trip.fromCountryCode,
       toCity: trip.toCity,
@@ -230,31 +276,31 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   Widget build(BuildContext context) {
     final asyncTrip = ref.watch(tripProvider(widget.tripId));
     final userId = ref.watch(authNotifierProvider).user?.userId;
+    final asyncMatchesForTrip =
+        ref.watch(tripMatchesForTripProvider(widget.tripId));
 
     return Scaffold(
       appBar: AppBar(title: const Text('Trip')),
       body: asyncTrip.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) =>
-            Center(child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(dioErrorMessage(e)),
-            )),
+        error: (e, _) => Center(
+            child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(dioErrorMessage(e)),
+        )),
         data: (trip) {
           if (trip == null) {
             return const _NotFoundView(message: 'Trip not found');
           }
-          final isOwner = userId != null;
-          // Note: TripDto does not expose travelerUserId. We treat the
-          // viewer as the owner whenever they are authenticated and the
-          // matches API doesn't 401/403/404. The repository already
-          // gracefully degrades for non-owners.
-          final asyncMatches = isOwner
-              ? ref.watch(tripMatchesProvider(widget.tripId))
-              : null;
+          final travelerId = trip.travelerUserId?.trim();
+          final isOwner = userId != null &&
+              travelerId != null &&
+              travelerId.isNotEmpty &&
+              travelerId == userId;
           final matches =
-              asyncMatches?.asData?.value ?? const <MatchDto>[];
-          final matchesLoading = asyncMatches?.isLoading ?? false;
+              asyncMatchesForTrip.asData?.value ?? const <MatchDto>[];
+          final matchesLoading =
+              isOwner && asyncMatchesForTrip.isLoading;
           final asyncOrders = ref.watch(ordersByTripProvider(widget.tripId));
           final ordersByTrip =
               asyncOrders.asData?.value ?? const <ShipmentOrderDto>[];
@@ -279,6 +325,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
           final showOrdersOnRoute = isOwner && trip.status == 'PLANNED';
           final ordersOnRouteAsync = showOrdersOnRoute
               ? ref.watch(_ordersOnRouteProvider(_OrdersOnRouteParams(
+                  tripId: widget.tripId,
                   fromCity: trip.fromCity,
                   fromCountryCode: trip.fromCountryCode,
                   toCity: trip.toCity,
@@ -300,19 +347,17 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
               matches.isNotEmpty &&
               allOrdersPaid &&
               !_starting;
-          final startTripDisabledReason = trip.status == 'PLANNED' &&
-                  matches.isNotEmpty &&
-                  !allOrdersPaid
-              ? 'Complete payment for all orders before starting the trip'
-              : null;
-          final showStartTrip = isOwner &&
-              trip.status == 'PLANNED' &&
-              matches.isNotEmpty;
+          final startTripDisabledReason =
+              trip.status == 'PLANNED' && matches.isNotEmpty && !allOrdersPaid
+                  ? 'Complete payment for all orders before starting the trip'
+                  : null;
+          final showStartTrip =
+              isOwner && trip.status == 'PLANNED' && matches.isNotEmpty;
 
           return RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(tripProvider(widget.tripId));
-              ref.invalidate(tripMatchesProvider(widget.tripId));
+              _invalidateTripMatchesListeners();
               ref.invalidate(ordersByTripProvider(widget.tripId));
               _invalidateOrdersOnRoute();
             },
@@ -334,6 +379,23 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                     const Padding(
                       padding: EdgeInsets.only(top: 16),
                       child: LinearProgressIndicator(),
+                    ),
+                  if (isOwner &&
+                      asyncMatchesForTrip.hasError &&
+                      !matchesLoading)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: Text(
+                        asyncMatchesForTrip.error is DioException
+                            ? dioErrorMessage(
+                                asyncMatchesForTrip.error! as DioException,
+                              )
+                            : '${asyncMatchesForTrip.error}',
+                        style: TextStyle(
+                          color: AppColors.destructive,
+                          fontSize: 14,
+                        ),
+                      ),
                     ),
                   if (!matchesLoading && matches.isNotEmpty) ...[
                     const SizedBox(height: 24),
@@ -357,6 +419,15 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                         onAccept: () => _acceptMatch(m.matchId),
                         onReject: () => _rejectMatch(m.matchId),
                         onMarkInTransit: (oid) => _markInTransit(oid),
+                        onViewShipment: () {
+                          final sid = m.shipmentId;
+                          if (sid == null || sid.isEmpty) return;
+                          showShipmentRequestReviewSheet(
+                            context,
+                            shipmentId: sid,
+                            trip: trip,
+                          );
+                        },
                       ),
                   ],
                   if (showOrdersOnRoute) ...[
@@ -373,6 +444,21 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                         padding: EdgeInsets.symmetric(vertical: 24),
                         child: Center(child: CircularProgressIndicator()),
                       )
+                    else if (ordersOnRouteAsync?.hasError == true)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Text(
+                          ordersOnRouteAsync!.error is DioException
+                              ? dioErrorMessage(
+                                  ordersOnRouteAsync.error! as DioException,
+                                )
+                              : '${ordersOnRouteAsync.error}',
+                          style: TextStyle(
+                            color: AppColors.destructive,
+                            fontSize: 14,
+                          ),
+                        ),
+                      )
                     else if (ordersOnRoute.isEmpty)
                       _EmptyOnRouteCard(trip: trip)
                     else
@@ -380,8 +466,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                         _OnRouteShipmentCard(
                           shipment: s,
                           busy: _busyShipmentId == s.primaryId,
-                          onAccept: () =>
-                              _acceptShipmentOnRoute(s.primaryId),
+                          onAccept: () => _acceptShipmentOnRoute(s.primaryId),
                         ),
                   ],
                 ],
@@ -414,8 +499,7 @@ class _TripHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final route =
-        '${cityCountryLabel(trip.fromCity, trip.fromCountryCode)} → '
+    final route = '${cityCountryLabel(trip.fromCity, trip.fromCountryCode)} → '
         '${cityCountryLabel(trip.toCity, trip.toCountryCode)}';
     final lastTwelve = trip.tripId.length > 12
         ? trip.tripId.substring(trip.tripId.length - 12)
@@ -589,9 +673,8 @@ class _TripMetaGrid extends StatelessWidget {
           children: [
             for (final t in tiles)
               SizedBox(
-                width: wide
-                    ? (c.maxWidth - 12 * (cross - 1)) / cross
-                    : c.maxWidth,
+                width:
+                    wide ? (c.maxWidth - 12 * (cross - 1)) / cross : c.maxWidth,
                 child: t,
               ),
           ],
@@ -616,8 +699,8 @@ class _MetaTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final iconBg = (accent ? AppColors.accent : AppColors.primary)
-        .withValues(alpha: 0.10);
+    final iconBg =
+        (accent ? AppColors.accent : AppColors.primary).withValues(alpha: 0.10);
     final iconColor = accent ? AppColors.accent : AppColors.primary;
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -830,6 +913,7 @@ class _MatchCard extends StatelessWidget {
     required this.onAccept,
     required this.onReject,
     required this.onMarkInTransit,
+    required this.onViewShipment,
   });
 
   final MatchDto match;
@@ -838,6 +922,7 @@ class _MatchCard extends StatelessWidget {
   final VoidCallback onAccept;
   final VoidCallback onReject;
   final void Function(String orderId) onMarkInTransit;
+  final VoidCallback onViewShipment;
 
   @override
   Widget build(BuildContext context) {
@@ -848,17 +933,8 @@ class _MatchCard extends StatelessWidget {
         const {'CONFIRMED', 'IN_PROGRESS', 'DELIVERED'}.contains(order!.status);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border(
-            top: BorderSide(color: AppColors.border),
-            right: BorderSide(color: AppColors.border),
-            bottom: BorderSide(color: AppColors.border),
-            left: BorderSide(color: AppColors.accent, width: 4),
-          ),
-        ),
+      child: _AccentLeftCard(
+        accentColor: AppColors.accent,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -949,11 +1025,9 @@ class _MatchCard extends StatelessWidget {
                   children: [
                     if ((match.shipmentId ?? '').isNotEmpty)
                       OutlinedButton.icon(
-                        onPressed: () => context.push(
-                            '/shipment/${match.shipmentId}'),
-                        icon: const Icon(Icons.description_outlined,
-                            size: 16),
-                        label: const Text('View shipment'),
+                        onPressed: onViewShipment,
+                        icon: const Icon(Icons.description_outlined, size: 16),
+                        label: const Text('View order details'),
                       ),
                     FilledButton.icon(
                       onPressed: busy ? null : onAccept,
@@ -994,8 +1068,7 @@ class _MatchCard extends StatelessWidget {
                   runSpacing: 8,
                   children: [
                     OutlinedButton.icon(
-                      onPressed: () =>
-                          context.push('/order/${order!.orderId}'),
+                      onPressed: () => context.push('/order/${order!.orderId}'),
                       icon: const Icon(Icons.receipt_long_outlined, size: 16),
                       label: const Text('View order'),
                     ),
@@ -1022,11 +1095,10 @@ class _MatchCard extends StatelessWidget {
                         order!.status == 'IN_PROGRESS' &&
                         order!.deliveryMilestone == 'PICKED_UP')
                       OutlinedButton.icon(
-                        onPressed: busy
-                            ? null
-                            : () => onMarkInTransit(order!.orderId),
-                        icon: const Icon(Icons.local_shipping_outlined,
-                            size: 16),
+                        onPressed:
+                            busy ? null : () => onMarkInTransit(order!.orderId),
+                        icon:
+                            const Icon(Icons.local_shipping_outlined, size: 16),
                         label: const Text('In transit'),
                       ),
                     if (isOrderPaid &&
@@ -1063,9 +1135,8 @@ class _OrderTrackingStepper extends StatelessWidget {
     if (status == 'CONFIRMED') {
       activeIndex = 0;
     } else if (status == 'IN_PROGRESS') {
-      activeIndex = milestone == 'IN_TRANSIT'
-          ? 2
-          : (milestone == 'DELIVERED' ? 3 : 1);
+      activeIndex =
+          milestone == 'IN_TRANSIT' ? 2 : (milestone == 'DELIVERED' ? 3 : 1);
     } else if (status == 'DELIVERED') {
       activeIndex = 3;
     }
@@ -1077,9 +1148,7 @@ class _OrderTrackingStepper extends StatelessWidget {
             Expanded(
               child: Container(
                 height: 2,
-                color: i < activeIndex
-                    ? AppColors.primary
-                    : AppColors.border,
+                color: i < activeIndex ? AppColors.primary : AppColors.border,
               ),
             ),
         ],
@@ -1124,17 +1193,8 @@ class _OnRouteShipmentCard extends StatelessWidget {
         '${cityCountryLabel(shipment.destinationCity, shipment.destinationCountryCode)}';
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border(
-            top: BorderSide(color: AppColors.border),
-            right: BorderSide(color: AppColors.border),
-            bottom: BorderSide(color: AppColors.border),
-            left: BorderSide(color: AppColors.primary, width: 4),
-          ),
-        ),
+      child: _AccentLeftCard(
+        accentColor: AppColors.primary,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: LayoutBuilder(
@@ -1324,6 +1384,42 @@ class _StatusChip extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: fg,
           letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
+/// Rounded card with a thick coloured left accent bar — mirrors web's
+/// `border-l-4 border-l-<colour>` rounded card. Implemented as a wrapper
+/// because Flutter forbids `borderRadius` on a `Border` whose sides have
+/// different colours, which silently turns the card into an empty
+/// `ErrorWidget` and hides all its content.
+class _AccentLeftCard extends StatelessWidget {
+  const _AccentLeftCard({
+    required this.accentColor,
+    required this.child,
+  });
+
+  final Color accentColor;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: accentColor),
+            Expanded(child: child),
+          ],
         ),
       ),
     );

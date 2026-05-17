@@ -23,7 +23,8 @@ class TripRepository {
     Map<String, dynamic>? pageJson;
     if (raw is Map<String, dynamic> && raw['content'] is List) {
       pageJson = raw;
-    } else if (raw is Map<String, dynamic> && raw['data'] is Map<String, dynamic>) {
+    } else if (raw is Map<String, dynamic> &&
+        raw['data'] is Map<String, dynamic>) {
       pageJson = raw['data'] as Map<String, dynamic>;
     }
     if (pageJson != null) {
@@ -52,7 +53,8 @@ class TripRepository {
   }
 
   Future<ApiResponse<TripDto?>> createTrip(Map<String, dynamic> payload) async {
-    final res = await _dio.post<dynamic>(ApiEndpoints.trips.create, data: payload);
+    final res =
+        await _dio.post<dynamic>(ApiEndpoints.trips.create, data: payload);
     final body = res.data;
     if (body is Map<String, dynamic> && body['tripId'] != null) {
       return ApiResponse(
@@ -69,7 +71,8 @@ class TripRepository {
         data: d is Map<String, dynamic> ? TripDto.fromJson(d) : null,
       );
     }
-    return const ApiResponse(success: false, message: 'Invalid response', data: null);
+    return const ApiResponse(
+        success: false, message: 'Invalid response', data: null);
   }
 
   Future<ApiResponse<TripDto?>> startTrip(String tripId) async {

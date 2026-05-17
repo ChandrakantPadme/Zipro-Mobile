@@ -5,10 +5,12 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/env/app_config.dart';
+import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/create_form_ui.dart';
 import '../../data/delivery_fees.dart';
 import '../../data/supported_cities.dart';
+import '../kyc/widgets/kyc_required_dialog.dart';
 import '../repositories_providers.dart';
 import 'shipments_list_screen.dart';
 
@@ -18,7 +20,9 @@ const _sendingDuty = 'Duty Free Shopping';
 
 bool _looksLikeUrl(String line) {
   final u = Uri.tryParse(line);
-  return u != null && u.hasScheme && (u.scheme == 'http' || u.scheme == 'https');
+  return u != null &&
+      u.hasScheme &&
+      (u.scheme == 'http' || u.scheme == 'https');
 }
 
 /// Create order UI aligned with [zipro_website_new/app/(app)/shipments/create/page.tsx].
@@ -39,6 +43,7 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
   final _receiverPhone = TextEditingController();
   final _description = TextEditingController();
   final _parcelValue = TextEditingController();
+
   /// One [TextEditingController] per row — matches web `productLinksText` lines.
   final List<TextEditingController> _productLinkControllers = [];
 
@@ -275,7 +280,8 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                 children: [
                   Text(
                     'Please read the Sender Declaration Form below. You must accept it to create an order.',
-                    style: TextStyle(color: AppColors.mutedForeground, fontSize: 13),
+                    style: TextStyle(
+                        color: AppColors.mutedForeground, fontSize: 13),
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
@@ -394,21 +400,33 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
 
     setState(() => _loading = true);
     final repo = ref.read(shipmentRepositoryProvider);
-    final res = await repo.createShipment(payload);
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (!res.success || res.data == null) {
+    try {
+      final res = await repo.createShipment(payload);
+      if (!mounted) return;
+      setState(() => _loading = false);
+      if (!res.success || res.data == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(res.message.isNotEmpty ? res.message : 'Failed')),
+        );
+        return;
+      }
+      ref.invalidate(myShipmentsProvider);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(res.message.isNotEmpty ? res.message : 'Failed')),
+        const SnackBar(content: Text('Order created')),
       );
-      return;
+      final id = res.data!.primaryId;
+      context.push('/shipment/$id');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      if (isKycRequiredError(e)) {
+        await showKycRequiredDialog(context, actionLabel: 'create an order');
+        return;
+      }
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(dioErrorMessage(e))));
     }
-    ref.invalidate(myShipmentsProvider);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Order created')),
-    );
-    final id = res.data!.primaryId;
-    context.push('/shipment/$id');
   }
 
   DropdownButtonFormField<String> _cityDropdown({
@@ -419,7 +437,8 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
     required ValueChanged<String?> onChanged,
     bool enabled = true,
   }) {
-    final validIds = options.map((e) => cityCompositeValue(e.city, e.countryCode)).toSet();
+    final validIds =
+        options.map((e) => cityCompositeValue(e.city, e.countryCode)).toSet();
     final resolved = value != null && validIds.contains(value) ? value : null;
 
     return DropdownButtonFormField<String>(
@@ -465,8 +484,7 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
     final showFeeDetail = isDutyFree
         ? (parseCityComposite(_dutyFreeAirportComposite) != null &&
             productCount >= 1)
-        : (double.tryParse(_parcelValue.text) != null &&
-            deliveryFeeUi != null);
+        : (double.tryParse(_parcelValue.text) != null && deliveryFeeUi != null);
 
     return Scaffold(
       appBar: AppBar(
@@ -479,8 +497,7 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final wide =
-                constraints.maxWidth >= CreateFormUi.wideBreakpoint;
+            final wide = constraints.maxWidth >= CreateFormUi.wideBreakpoint;
             return Scrollbar(
               thumbVisibility: true,
               child: SingleChildScrollView(
@@ -505,9 +522,12 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                         ),
                         value: _whatSending,
                         items: const [
-                          DropdownMenuItem(value: _sendingDocs, child: Text('Documents')),
-                          DropdownMenuItem(value: _sendingIntl, child: Text(_sendingIntl)),
-                          DropdownMenuItem(value: _sendingDuty, child: Text(_sendingDuty)),
+                          DropdownMenuItem(
+                              value: _sendingDocs, child: Text('Documents')),
+                          DropdownMenuItem(
+                              value: _sendingIntl, child: Text(_sendingIntl)),
+                          DropdownMenuItem(
+                              value: _sendingDuty, child: Text(_sendingDuty)),
                         ],
                         onChanged: _setWhatSending,
                       ),
@@ -517,7 +537,8 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                       CreateFormUi.sectionTitle(context, 'Location'),
                       if (isDutyFree) ...[
                         _cityDropdown(
-                          label: 'Please select the airport of your duty free shopping',
+                          label:
+                              'Please select the airport of your duty free shopping',
                           hint: 'Select airport',
                           value: _dutyFreeAirportComposite,
                           options: sortedIndiaCities(),
@@ -542,8 +563,8 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                                 ),
                                 if ((_originComposite ?? '').isNotEmpty)
                                   IconButton(
-                                    icon:
-                                        Icon(Icons.clear, color: AppColors.mutedForeground),
+                                    icon: Icon(Icons.clear,
+                                        color: AppColors.mutedForeground),
                                     onPressed: () =>
                                         setState(() => _originComposite = null),
                                   ),
@@ -564,10 +585,10 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                                 ),
                                 if ((_destinationComposite ?? '').isNotEmpty)
                                   IconButton(
-                                    icon:
-                                        Icon(Icons.clear, color: AppColors.mutedForeground),
-                                    onPressed: () =>
-                                        setState(() => _destinationComposite = null),
+                                    icon: Icon(Icons.clear,
+                                        color: AppColors.mutedForeground),
+                                    onPressed: () => setState(
+                                        () => _destinationComposite = null),
                                   ),
                               ],
                             );
@@ -625,9 +646,12 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                         ),
                         value: _packageWeight,
                         items: const [
-                          DropdownMenuItem(value: 'upto_1kg', child: Text('Up to 1 kg')),
-                          DropdownMenuItem(value: 'upto_2kg', child: Text('Up to 2 kg')),
-                          DropdownMenuItem(value: 'upto_3kg', child: Text('Up to 3 kg')),
+                          DropdownMenuItem(
+                              value: 'upto_1kg', child: Text('Up to 1 kg')),
+                          DropdownMenuItem(
+                              value: 'upto_2kg', child: Text('Up to 2 kg')),
+                          DropdownMenuItem(
+                              value: 'upto_3kg', child: Text('Up to 3 kg')),
                         ],
                         onChanged: (v) => setState(() => _packageWeight = v),
                       ),
@@ -654,7 +678,8 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                               final picked = await showDatePicker(
                                 context: context,
                                 initialDate: _deliveryDate ?? now,
-                                firstDate: DateTime(now.year, now.month, now.day),
+                                firstDate:
+                                    DateTime(now.year, now.month, now.day),
                                 lastDate:
                                     DateTime(now.year + 2, now.month, now.day),
                               );
@@ -670,7 +695,8 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                               child: Row(
                                 children: [
                                   Icon(Icons.calendar_month_outlined,
-                                      color: AppColors.mutedForeground, size: 20),
+                                      color: AppColors.mutedForeground,
+                                      size: 20),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
@@ -710,8 +736,7 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Padding(
-                                        padding:
-                                            const EdgeInsets.only(top: 14),
+                                        padding: const EdgeInsets.only(top: 14),
                                         child: SizedBox(
                                           width: 22,
                                           child: Text(
@@ -729,8 +754,7 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                                           controller:
                                               _productLinkControllers[index],
                                           keyboardType: TextInputType.url,
-                                          textInputAction:
-                                              TextInputAction.next,
+                                          textInputAction: TextInputAction.next,
                                           style: const TextStyle(
                                             fontFamily: 'monospace',
                                             fontSize: 13,
@@ -939,7 +963,8 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                                 style: TextButton.styleFrom(
                                   minimumSize: Size.zero,
                                   padding: EdgeInsets.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
                                   foregroundColor: AppColors.primary,
                                 ),
                                 onPressed: _showDeclarationDialog,
@@ -995,8 +1020,8 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
                                   ? const SizedBox(
                                       width: 22,
                                       height: 22,
-                                      child:
-                                          CircularProgressIndicator(strokeWidth: 2),
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2),
                                     )
                                   : const Text('Create Order'),
                             ),

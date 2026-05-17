@@ -13,8 +13,7 @@ import '../repositories_providers.dart';
 String _tripDateLabel(String iso) {
   if (iso.isEmpty) return '';
   try {
-    return DateFormat('MMM dd, yyyy')
-        .format(DateTime.parse(iso).toLocal());
+    return DateFormat('MMM dd, yyyy').format(DateTime.parse(iso).toLocal());
   } catch (_) {
     return iso;
   }
@@ -50,8 +49,7 @@ class AvailableTripsScreen extends ConsumerWidget {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(24),
               children: [
-                Icon(Icons.flight,
-                    size: 56, color: AppColors.mutedForeground),
+                Icon(Icons.flight, size: 56, color: AppColors.mutedForeground),
                 const SizedBox(height: 16),
                 Text(
                   'No active travellers yet',
@@ -64,15 +62,10 @@ class AvailableTripsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Check back later or create a shipment to find carriers.',
+                  'Trips from travellers will show up here once they\'re available.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: AppColors.mutedForeground, fontSize: 13),
-                ),
-                const SizedBox(height: 20),
-                TextButton(
-                  onPressed: () => context.go('/shipments/create'),
-                  child: const Text('Create a shipment'),
+                  style:
+                      TextStyle(color: AppColors.mutedForeground, fontSize: 13),
                 ),
               ],
             );
@@ -125,8 +118,7 @@ class AvailableTripsScreen extends ConsumerWidget {
                               if (t.departAt.isNotEmpty) ...[
                                 const SizedBox(width: 8),
                                 Icon(Icons.calendar_today_outlined,
-                                    size: 14,
-                                    color: AppColors.mutedForeground),
+                                    size: 14, color: AppColors.mutedForeground),
                                 const SizedBox(width: 4),
                                 Text(
                                   _tripDateLabel(t.departAt),

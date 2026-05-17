@@ -37,15 +37,51 @@ class ShipmentAddressesDto {
   }
 }
 
+class OrderItemDto {
+  OrderItemDto({
+    this.itemId,
+    required this.itemDescription,
+    required this.quantity,
+    this.itemValueAmount,
+    this.productLink,
+  });
+
+  final String? itemId;
+  final String itemDescription;
+  final num quantity;
+  final num? itemValueAmount;
+  final String? productLink;
+
+  factory OrderItemDto.fromJson(Map<String, dynamic> j) {
+    return OrderItemDto(
+      itemId: j['itemId'] as String?,
+      itemDescription: j['itemDescription'] as String? ?? '',
+      quantity: j['quantity'] as num? ?? 0,
+      itemValueAmount: j['itemValueAmount'] as num?,
+      productLink: j['productLink'] as String?,
+    );
+  }
+}
+
+List<OrderItemDto> _itemsFromJson(dynamic v) {
+  if (v is! List) return const [];
+  return v
+      .whereType<Map<String, dynamic>>()
+      .map(OrderItemDto.fromJson)
+      .toList();
+}
+
 class ShipmentOrderDto {
   ShipmentOrderDto({
     required this.orderId,
     this.shipmentId,
     this.tripId,
     this.senderUserId,
+    this.travelerUserId,
     this.shipmentType,
     this.latestDeliveryDate,
     this.productLinks = const [],
+    this.items = const [],
     this.receiverName,
     this.receiverPhone,
     this.addresses,
@@ -74,9 +110,11 @@ class ShipmentOrderDto {
   final String? shipmentId;
   final String? tripId;
   final String? senderUserId;
+  final String? travelerUserId;
   final String? shipmentType;
   final String? latestDeliveryDate;
   final List<String> productLinks;
+  final List<OrderItemDto> items;
   final String? receiverName;
   final String? receiverPhone;
   final ShipmentAddressesDto? addresses;
@@ -86,6 +124,7 @@ class ShipmentOrderDto {
   final String destinationCountryCode;
   final String description;
   final String status;
+
   /// Carrier-side delivery milestone ("PICKED_UP", "IN_TRANSIT", "DELIVERED").
   final String? deliveryMilestone;
   final num? declaredValueAmount;
@@ -110,9 +149,11 @@ class ShipmentOrderDto {
       shipmentId: sid ?? (oid.isNotEmpty ? oid : null),
       tripId: j['tripId'] as String?,
       senderUserId: j['senderUserId'] as String?,
+      travelerUserId: j['travelerUserId'] as String?,
       shipmentType: j['shipmentType'] as String?,
       latestDeliveryDate: j['latestDeliveryDate'] as String?,
       productLinks: _stringListFromJson(j['productLinks']),
+      items: _itemsFromJson(j['items']),
       receiverName: j['receiverName'] as String?,
       receiverPhone: j['receiverPhone'] as String?,
       addresses: addrRaw is Map<String, dynamic>
@@ -147,6 +188,7 @@ class ShipmentOrderDto {
 class TripDto {
   TripDto({
     required this.tripId,
+    this.travelerUserId,
     required this.fromCity,
     required this.fromCountryCode,
     required this.toCity,
@@ -163,6 +205,9 @@ class TripDto {
   });
 
   final String tripId;
+
+  /// Present on full trip details / API; used for owner checks (see web trip page).
+  final String? travelerUserId;
   final String fromCity;
   final String fromCountryCode;
   final String toCity;
@@ -180,6 +225,7 @@ class TripDto {
   factory TripDto.fromJson(Map<String, dynamic> j) {
     return TripDto(
       tripId: j['tripId'] as String? ?? '',
+      travelerUserId: j['travelerUserId'] as String?,
       fromCity: j['fromCity'] as String? ?? '',
       fromCountryCode: j['fromCountryCode'] as String? ?? '',
       toCity: j['toCity'] as String? ?? '',
@@ -229,6 +275,15 @@ class TripOfferDto {
   }
 }
 
+num? _nullableJsonNum(dynamic v) {
+  if (v == null) return null;
+  if (v is num) return v;
+  if (v is String) return num.tryParse(v);
+  return null;
+}
+
+num _jsonNum(dynamic v, [num fallback = 0]) => _nullableJsonNum(v) ?? fallback;
+
 class MatchDto {
   MatchDto({
     required this.matchId,
@@ -267,11 +322,15 @@ class MatchDto {
       tripId: j['tripId'] as String?,
       orderId: j['orderId'] as String?,
       travelerUserId: j['travelerUserId'] as String? ?? '',
-      status: j['status'] as String? ?? '',
-      agreedFee: j['agreedFee'] as num? ?? 0,
+      status: () {
+        final s = j['status'];
+        if (s is String) return s;
+        return s?.toString() ?? '';
+      }(),
+      agreedFee: _jsonNum(j['agreedFee']),
       currency: j['currency'] as String?,
-      weightKg: j['weightKg'] as num?,
-      declaredValueAmount: j['declaredValueAmount'] as num?,
+      weightKg: _nullableJsonNum(j['weightKg']),
+      declaredValueAmount: _nullableJsonNum(j['declaredValueAmount']),
       declaredValueCurrency: j['declaredValueCurrency'] as String?,
       carrierOriginAddressText: j['carrierOriginAddressText'] as String?,
       carrierDestinationAddressText:
@@ -290,6 +349,10 @@ class MatchableCarrierDto {
     required this.fromCity,
     required this.toCity,
     required this.departAt,
+    this.fromCountryCode,
+    this.toCountryCode,
+    this.airline,
+    this.flightNumber,
     this.isVerified,
     this.completedDeliveries,
   });
@@ -302,6 +365,10 @@ class MatchableCarrierDto {
   final String fromCity;
   final String toCity;
   final String departAt;
+  final String? fromCountryCode;
+  final String? toCountryCode;
+  final String? airline;
+  final String? flightNumber;
   final bool? isVerified;
   final int? completedDeliveries;
 
@@ -315,6 +382,10 @@ class MatchableCarrierDto {
       fromCity: j['fromCity'] as String? ?? '',
       toCity: j['toCity'] as String? ?? '',
       departAt: j['departAt'] as String? ?? '',
+      fromCountryCode: j['fromCountryCode'] as String?,
+      toCountryCode: j['toCountryCode'] as String?,
+      airline: j['airline'] as String?,
+      flightNumber: j['flightNumber'] as String?,
       isVerified: j['isVerified'] as bool?,
       completedDeliveries: (j['completedDeliveries'] as num?)?.toInt(),
     );
@@ -372,6 +443,12 @@ class PaymentDto {
     required this.status,
     this.amount,
     this.currency,
+    this.paymentMethod,
+    this.transactionId,
+    this.razorpayPaymentId,
+    this.razorpayOrderId,
+    this.failureReason,
+    this.createdAt,
   });
 
   final String paymentId;
@@ -379,6 +456,12 @@ class PaymentDto {
   final String status;
   final num? amount;
   final String? currency;
+  final String? paymentMethod;
+  final String? transactionId;
+  final String? razorpayPaymentId;
+  final String? razorpayOrderId;
+  final String? failureReason;
+  final String? createdAt;
 
   factory PaymentDto.fromJson(Map<String, dynamic> j) {
     return PaymentDto(
@@ -387,6 +470,12 @@ class PaymentDto {
       status: j['status'] as String? ?? '',
       amount: j['amount'] as num?,
       currency: j['currency'] as String?,
+      paymentMethod: j['paymentMethod'] as String?,
+      transactionId: j['transactionId'] as String?,
+      razorpayPaymentId: j['razorpayPaymentId'] as String?,
+      razorpayOrderId: j['razorpayOrderId'] as String?,
+      failureReason: j['failureReason'] as String?,
+      createdAt: j['createdAt'] as String?,
     );
   }
 }

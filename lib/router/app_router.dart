@@ -10,6 +10,7 @@ import '../features/auth/presentation/welcome_login_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
 import '../features/kyc/kyc_screen.dart';
 import '../features/matches/matches_list_screen.dart';
+import '../features/orders/order_deliver_screen.dart';
 import '../features/orders/order_detail_screen.dart';
 import '../features/orders/order_pay_screen.dart';
 import '../features/orders/orders_list_screen.dart';
@@ -125,6 +126,7 @@ GoRouter buildAppRouter(AuthNotifier auth) {
             initialFromCountryCode: q['fromCountryCode'],
             initialToCity: q['toCity'],
             initialToCountryCode: q['toCountryCode'],
+            createForShipmentId: q['forShipment'],
           );
         },
       ),
@@ -170,6 +172,7 @@ GoRouter buildAppRouter(AuthNotifier auth) {
         path: '/shipment/:id',
         builder: (context, state) => ShipmentDetailScreen(
           shipmentId: state.pathParameters['id']!,
+          paymentPending: state.uri.queryParameters['payment'] == 'pending',
         ),
       ),
       GoRoute(
@@ -188,11 +191,18 @@ GoRouter buildAppRouter(AuthNotifier auth) {
         path: '/order/:id',
         builder: (context, state) => OrderDetailScreen(
           orderId: state.pathParameters['id']!,
+          paymentPending: state.uri.queryParameters['payment'] == 'pending',
         ),
       ),
       GoRoute(
         path: '/order/:id/pay',
         builder: (context, state) => OrderPayScreen(
+          orderId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/order/:id/deliver',
+        builder: (context, state) => OrderDeliverScreen(
           orderId: state.pathParameters['id']!,
         ),
       ),

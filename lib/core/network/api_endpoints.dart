@@ -92,8 +92,7 @@ class _OrderEndpoints {
   String getById(String orderId) => '/v1/orders/$orderId';
   String update(String orderId) => '/v1/orders/$orderId';
   String delete(String orderId) => '/v1/orders/$orderId';
-  String getByShipment(String shipmentId) =>
-      '/v1/orders/shipment/$shipmentId';
+  String getByShipment(String shipmentId) => '/v1/orders/shipment/$shipmentId';
   String get myBuyer => '/v1/orders/my/buyer';
   String get myTraveler => '/v1/orders/my/traveler';
   String confirm(String orderId) => '/v1/orders/$orderId/confirm';

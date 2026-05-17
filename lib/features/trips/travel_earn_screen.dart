@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,11 +6,20 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:mime/mime.dart';
 
+import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/create_form_ui.dart';
 import '../../data/supported_cities.dart';
 import '../kyc/kyc_status_provider.dart';
+import '../kyc/widgets/kyc_required_dialog.dart';
 import '../repositories_providers.dart';
+import '../shipments/shipment_detail_screen.dart'
+    show
+        orderByShipmentProvider,
+        shipmentDetailProvider,
+        shipmentMatchesProvider;
+import 'trip_detail_screen.dart'
+    show ordersByTripProvider, tripMatchesForTripProvider, tripProvider;
 import 'trips_list_screen.dart';
 
 /// Mirrors [zipro_website_new/app/(app)/trips/create/page.tsx] — two rows of
@@ -22,12 +32,15 @@ class TravelEarnScreen extends ConsumerStatefulWidget {
     this.initialFromCountryCode,
     this.initialToCity,
     this.initialToCountryCode,
+    this.createForShipmentId,
   });
 
   final String? initialFromCity;
   final String? initialFromCountryCode;
   final String? initialToCity;
   final String? initialToCountryCode;
+  /// When set (e.g. live order → create trip), accept this shipment after trip create.
+  final String? createForShipmentId;
 
   @override
   ConsumerState<TravelEarnScreen> createState() => _TravelEarnScreenState();
@@ -249,12 +262,10 @@ class _TravelEarnScreenState extends ConsumerState<TravelEarnScreen> {
       0,
     ).toIso8601String();
 
-    final capW = _capW.text.trim().isEmpty
-        ? null
-        : double.tryParse(_capW.text.trim());
-    final capV = _capV.text.trim().isEmpty
-        ? null
-        : double.tryParse(_capV.text.trim());
+    final capW =
+        _capW.text.trim().isEmpty ? null : double.tryParse(_capW.text.trim());
+    final capV =
+        _capV.text.trim().isEmpty ? null : double.tryParse(_capV.text.trim());
 
     final payload = <String, dynamic>{
       'fromCity': _fromSelected!.city,
@@ -281,21 +292,75 @@ class _TravelEarnScreenState extends ConsumerState<TravelEarnScreen> {
 
     setState(() => _loading = true);
     final repo = ref.read(tripRepositoryProvider);
-    final res = await repo.createTrip(payload);
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (!res.success || res.data == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(res.message)),
-      );
-      return;
+    try {
+      final res = await repo.createTrip(payload);
+      if (!mounted) return;
+      setState(() => _loading = false);
+      if (!res.success || res.data == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(res.message)),
+        );
+        return;
+      }
+      final newTripId = res.data!.tripId;
+      final pendingShipment = widget.createForShipmentId?.trim();
+      if (pendingShipment != null && pendingShipment.isNotEmpty) {
+        try {
+          final acceptRes = await repo.acceptShipmentForTrip(
+            tripId: newTripId,
+            shipmentId: pendingShipment,
+          );
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                acceptRes.success
+                    ? (acceptRes.message.isNotEmpty
+                        ? acceptRes.message
+                        : 'Order accepted')
+                    : (acceptRes.message.isNotEmpty
+                        ? acceptRes.message
+                        : 'Could not accept order'),
+              ),
+            ),
+          );
+        } catch (e) {
+          if (!mounted) return;
+          if (isKycRequiredError(e)) {
+            await showKycRequiredDialog(context, actionLabel: 'accept an order');
+          } else {
+            final msg = e is DioException ? dioErrorMessage(e) : '$e';
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+          }
+        }
+      }
+      ref.invalidate(myTripsProvider);
+      ref.invalidate(myPlannedTripsProvider);
+      ref.invalidate(tripProvider(newTripId));
+      ref.invalidate(tripMatchesForTripProvider(newTripId));
+      ref.invalidate(ordersByTripProvider(newTripId));
+      if (pendingShipment != null && pendingShipment.isNotEmpty) {
+        ref.invalidate(shipmentDetailProvider(pendingShipment));
+        ref.invalidate(shipmentMatchesProvider(pendingShipment));
+        ref.invalidate(orderByShipmentProvider(pendingShipment));
+      }
+      if (!mounted) return;
+      if (pendingShipment == null || pendingShipment.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Trip created')),
+        );
+      }
+      context.go('/trip/$newTripId');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      if (isKycRequiredError(e)) {
+        await showKycRequiredDialog(context, actionLabel: 'create a trip');
+        return;
+      }
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(dioErrorMessage(e))));
     }
-    ref.invalidate(myTripsProvider);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Trip created')),
-    );
-    context.go('/trip/${res.data!.tripId}');
   }
 
   @override
@@ -350,8 +415,7 @@ class _TravelEarnScreenState extends ConsumerState<TravelEarnScreen> {
                               }
                             });
                           },
-                          onClear: () =>
-                              setState(() => _fromSelected = null),
+                          onClear: () => setState(() => _fromSelected = null),
                         ),
                         second: _RouteCityCard(
                           label: 'Destination',
@@ -370,8 +434,7 @@ class _TravelEarnScreenState extends ConsumerState<TravelEarnScreen> {
                               }
                             });
                           },
-                          onClear: () =>
-                              setState(() => _toSelected = null),
+                          onClear: () => setState(() => _toSelected = null),
                         ),
                       ),
                       const SizedBox(height: CreateFormUi.fieldGap),
@@ -400,8 +463,8 @@ class _TravelEarnScreenState extends ConsumerState<TravelEarnScreen> {
                           boardingPassFileName: _boardingPassFile?.name,
                           boardingPassUploaded: _boardingPassS3Key != null,
                           onPickBoardingPass: _pickAndUploadBoardingPass,
-                          onCapWChanged: () =>
-                              setState(() => _errors.remove('capacityWeightKg')),
+                          onCapWChanged: () => setState(
+                              () => _errors.remove('capacityWeightKg')),
                           onCapVChanged: () => setState(
                               () => _errors.remove('capacityValueLimit')),
                         ),
@@ -750,9 +813,7 @@ class _BoardingPassField extends StatelessWidget {
                       )
                     : const Icon(Icons.upload_file_outlined),
                 label: Text(
-                  uploaded
-                      ? (fileName ?? 'Uploaded')
-                      : 'Choose file',
+                  uploaded ? (fileName ?? 'Uploaded') : 'Choose file',
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -828,8 +889,7 @@ class _DateField extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(12),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
