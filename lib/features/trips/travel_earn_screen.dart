@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:mime/mime.dart';
 
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/create_form_ui.dart';
@@ -365,21 +366,13 @@ class _TravelEarnScreenState extends ConsumerState<TravelEarnScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/dashboard');
-            }
-          },
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: ziproLeadingBackOrHome(context),
+          title: const Text('Create New Trip'),
         ),
-        title: const Text('Create New Trip'),
-      ),
-      body: SafeArea(
+        body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= CreateFormUi.wideBreakpoint;
@@ -489,7 +482,8 @@ class _TravelEarnScreenState extends ConsumerState<TravelEarnScreen> {
           },
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _heroHeader(BuildContext context) {

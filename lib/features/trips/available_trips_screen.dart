@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:intl/intl.dart';
 
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../../core/models/delivery_models.dart';
 import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
@@ -148,15 +149,14 @@ class AvailableTripsScreen extends ConsumerWidget {
       return body;
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: ziproLeadingBackOrHome(context),
+          title: const Text('Active travellers'),
         ),
-        title: const Text('Active travellers'),
+        body: body,
       ),
-      body: body,
     );
   }
 }

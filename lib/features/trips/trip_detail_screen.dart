@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../../core/models/delivery_models.dart';
 import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
@@ -279,9 +280,13 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     final asyncMatchesForTrip =
         ref.watch(tripMatchesForTripProvider(widget.tripId));
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Trip')),
-      body: asyncTrip.when(
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Trip'),
+          leading: ziproLeadingBackOrHome(context),
+        ),
+        body: asyncTrip.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
             child: Padding(
@@ -476,6 +481,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
             ),
           );
         },
+      ),
       ),
     );
   }
@@ -1472,13 +1478,7 @@ class _NotFoundView extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: () {
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  context.go('/my-trips');
-                }
-              },
+              onPressed: () => ziproPopOrHome(context),
               child: const Text('Back to trips'),
             ),
           ],

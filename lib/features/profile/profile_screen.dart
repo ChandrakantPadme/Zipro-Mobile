@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../auth/presentation/auth_providers.dart';
 import '../repositories_providers.dart';
 
@@ -32,15 +32,13 @@ class ProfileScreen extends ConsumerWidget {
     final user = ref.watch(authNotifierProvider).user;
     final trust = ref.watch(userTrustSummaryProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: ziproLeadingBackOrHome(context),
+          title: const Text('Profile details'),
         ),
-        title: const Text('Profile details'),
-      ),
-      body: SafeArea(
+        body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
@@ -61,7 +59,8 @@ class ProfileScreen extends ConsumerWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }
 

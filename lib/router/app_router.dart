@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/navigation/zipro_pop_or_home.dart';
 import '../features/auth/presentation/auth_notifier.dart';
 import '../features/auth/presentation/login_details_screen.dart';
 import '../features/auth/presentation/login_flow_models.dart';
@@ -18,7 +19,6 @@ import '../features/profile/profile_hub_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/shipments/send_or_shop_screen.dart';
 import '../features/shipments/available_shipments_screen.dart';
-import '../features/shipments/shipment_carriers_screen.dart';
 import '../features/shipments/shipment_detail_screen.dart';
 import '../features/shipments/shipments_list_screen.dart';
 import '../features/shell/app_shell_screen.dart';
@@ -132,28 +132,26 @@ GoRouter buildAppRouter(AuthNotifier auth) {
       ),
       GoRoute(
         path: '/my-shipments',
-        builder: (context, state) => Scaffold(
-          appBar: AppBar(
-            title: const Text('My orders'),
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.pop(),
+        builder: (context, state) => ZiproPopScope(
+          child: Scaffold(
+            appBar: AppBar(
+              title: const Text('My orders'),
+              leading: ziproLeadingBackOrHome(context),
             ),
+            body: const ShipmentsListScreen(),
           ),
-          body: const ShipmentsListScreen(),
         ),
       ),
       GoRoute(
         path: '/my-trips',
-        builder: (context, state) => Scaffold(
-          appBar: AppBar(
-            title: const Text('My trips'),
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.pop(),
+        builder: (context, state) => ZiproPopScope(
+          child: Scaffold(
+            appBar: AppBar(
+              title: const Text('My trips'),
+              leading: ziproLeadingBackOrHome(context),
             ),
+            body: const TripsListScreen(),
           ),
-          body: const TripsListScreen(),
         ),
       ),
       GoRoute(
@@ -173,12 +171,6 @@ GoRouter buildAppRouter(AuthNotifier auth) {
         builder: (context, state) => ShipmentDetailScreen(
           shipmentId: state.pathParameters['id']!,
           paymentPending: state.uri.queryParameters['payment'] == 'pending',
-        ),
-      ),
-      GoRoute(
-        path: '/shipment/:id/carriers',
-        builder: (context, state) => ShipmentCarriersScreen(
-          shipmentId: state.pathParameters['id']!,
         ),
       ),
       GoRoute(

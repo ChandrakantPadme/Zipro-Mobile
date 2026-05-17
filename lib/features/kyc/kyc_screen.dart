@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 
 import '../../core/models/kyc_dto.dart';
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/create_form_ui.dart';
 import '../auth/presentation/auth_notifier.dart';
@@ -313,15 +314,13 @@ class _KycScreenState extends ConsumerState<KycScreen> {
     final async = ref.watch(kycRecordProvider);
     final auth = ref.watch(authNotifierProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: ziproLeadingBackOrHome(context),
+          title: const Text('KYC'),
         ),
-        title: const Text('KYC'),
-      ),
-      body: Stack(
+        body: Stack(
         children: [
           async.when(
             data: (kyc) {
@@ -402,7 +401,8 @@ class _KycScreenState extends ConsumerState<KycScreen> {
             ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildWizard(AuthNotifier auth) {

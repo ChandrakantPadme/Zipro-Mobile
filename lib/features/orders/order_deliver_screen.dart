@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
 import '../auth/presentation/auth_providers.dart';
@@ -73,21 +74,13 @@ class _OrderDeliverScreenState extends ConsumerState<OrderDeliverScreen> {
     final asyncOrder = ref.watch(orderDetailProvider(widget.orderId));
     final userId = ref.watch(authNotifierProvider).user?.userId;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Delivery'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/order/${widget.orderId}');
-            }
-          },
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Delivery'),
+          leading: ziproLeadingBackOrHome(context),
         ),
-      ),
-      body: asyncOrder.when(
+        body: asyncOrder.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(dioErrorMessage(e))),
         data: (order) {
@@ -209,7 +202,8 @@ class _OrderDeliverScreenState extends ConsumerState<OrderDeliverScreen> {
           );
         },
       ),
-    );
+    ),
+  );
   }
 }
 

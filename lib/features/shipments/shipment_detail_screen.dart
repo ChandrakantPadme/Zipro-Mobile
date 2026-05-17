@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../../core/models/delivery_models.dart';
 import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
@@ -15,11 +16,18 @@ import '../payments/widgets/payment_pending_banner.dart';
 import '../repositories_providers.dart';
 import '../trips/trips_list_screen.dart' show myPlannedTripsProvider;
 import 'shipment_trip_match.dart';
+import 'widgets/carrier_card.dart';
 
 final shipmentDetailProvider = FutureProvider.family
     .autoDispose<ShipmentOrderDto?, String>((ref, id) async {
   final repo = ref.watch(shipmentRepositoryProvider);
   return repo.getShipment(id);
+});
+
+final matchableCarriersProvider = FutureProvider.family
+    .autoDispose<List<MatchableCarrierDto>, String>((ref, shipmentId) async {
+  final repo = ref.watch(shipmentRepositoryProvider);
+  return repo.getMatchableCarriers(shipmentId);
 });
 
 final orderByShipmentProvider = FutureProvider.family
@@ -47,6 +55,46 @@ bool _isMatchAccepted(MatchDto m) =>
 String _formatFee(num? v) {
   if (v == null) return '—';
   return NumberFormat('#0.00').format(v);
+}
+
+/// Readable reference: long ULIDs get `prefix…suffix` instead of harsh truncation.
+String _compactMatchId(String id) {
+  final t = id.trim();
+  if (t.isEmpty) return '—';
+  if (t.length <= 18) return t;
+  return '${t.substring(0, 8)}…${t.substring(t.length - 8)}';
+}
+
+(Color, Color) _matchStatusColors(String status) {
+  switch (status) {
+    case 'PLANNED':
+    case 'OFFERED':
+      return (
+        AppColors.primary.withValues(alpha: 0.12),
+        AppColors.primary,
+      );
+    case 'ACCEPTED':
+    case 'MATCHED':
+    case 'CONFIRMED':
+      return (const Color(0xFFDCFCE7), const Color(0xFF166534));
+    case 'IN_PROGRESS':
+    case 'STARTED':
+      return (
+        AppColors.accent.withValues(alpha: 0.18),
+        AppColors.accent,
+      );
+    case 'COMPLETED':
+    case 'DELIVERED':
+      return (const Color(0xFFDCFCE7), const Color(0xFF166534));
+    case 'CANCELLED':
+    case 'REJECTED':
+      return (
+        AppColors.destructive.withValues(alpha: 0.12),
+        AppColors.destructive,
+      );
+    default:
+      return (AppColors.secondary, AppColors.mutedForeground);
+  }
 }
 
 String _latestDeliveryLabel(String? iso) {
@@ -111,6 +159,42 @@ class ShipmentDetailScreen extends ConsumerStatefulWidget {
 
 class _ShipmentDetailScreenState extends ConsumerState<ShipmentDetailScreen> {
   bool _acceptLoading = false;
+  String? _busyTripId;
+
+  Future<void> _selectCarrier(String tripId) async {
+    if (_busyTripId != null) return;
+    setState(() => _busyTripId = tripId);
+    final repo = ref.read(matchRepositoryProvider);
+    try {
+      final res = await repo.createMatch(
+        shipmentId: widget.shipmentId,
+        tripId: tripId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            res.message.isNotEmpty ? res.message : 'Request sent to carrier',
+          ),
+        ),
+      );
+      if (res.success) {
+        ref.invalidate(shipmentMatchesProvider(widget.shipmentId));
+        ref.invalidate(shipmentDetailProvider(widget.shipmentId));
+        ref.invalidate(matchableCarriersProvider(widget.shipmentId));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      if (isKycRequiredError(e)) {
+        await showKycRequiredDialog(context, actionLabel: 'choose a traveller');
+        return;
+      }
+      final msg = e is DioException ? dioErrorMessage(e) : '$e';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (mounted) setState(() => _busyTripId = null);
+    }
+  }
 
   Future<void> _onAcceptOrder({
     required ShipmentOrderDto shipment,
@@ -201,26 +285,13 @@ class _ShipmentDetailScreenState extends ConsumerState<ShipmentDetailScreen> {
     final asyncOrder = ref.watch(orderByShipmentProvider(widget.shipmentId));
     final userId = ref.watch(authNotifierProvider).user?.userId;
 
-    final isSenderForAppBar = asyncShipment.asData?.value != null &&
-        asyncShipment.asData!.value!.senderUserId != null &&
-        asyncShipment.asData!.value!.senderUserId!.isNotEmpty &&
-        userId != null &&
-        asyncShipment.asData!.value!.senderUserId == userId;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Order'),
-        actions: [
-          if (isSenderForAppBar)
-            IconButton(
-              icon: const Icon(Icons.people_outline),
-              tooltip: 'Choose traveller',
-              onPressed: () =>
-                  context.push('/shipment/${widget.shipmentId}/carriers'),
-            ),
-        ],
-      ),
-      body: asyncShipment.when(
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Order'),
+          leading: ziproLeadingBackOrHome(context),
+        ),
+        body: asyncShipment.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _NotFoundView(message: dioErrorMessage(e)),
         data: (s) {
@@ -353,7 +424,8 @@ class _ShipmentDetailScreenState extends ConsumerState<ShipmentDetailScreen> {
                             'Order #$orderIdDisplay',
                             style: TextStyle(
                               fontSize: 12,
-                              color: AppColors.mutedForeground,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.foreground.withValues(alpha: 0.68),
                             ),
                           ),
                         ],
@@ -489,64 +561,26 @@ class _ShipmentDetailScreenState extends ConsumerState<ShipmentDetailScreen> {
                   const SizedBox(height: 24),
                   Text(
                     'Current match',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  ...matches.map(
-                    (m) => Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 6,
-                              children: [
-                                Text(
-                                  'Match …${m.matchId.length > 8 ? m.matchId.substring(m.matchId.length - 8) : m.matchId}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                Chip(
-                                  label: Text(
-                                    m.status,
-                                    style: const TextStyle(fontSize: 11),
-                                  ),
-                                  visualDensity: VisualDensity.compact,
-                                  side: BorderSide(color: AppColors.border),
-                                ),
-                                if (!isSender)
-                                  Text(
-                                    'Fee: ${m.currency ?? feeCurrency} ${m.agreedFee}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.mutedForeground,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            if (m.status == 'OFFERED')
-                              Text(
-                                'Request sent. Waiting for carrier to review and accept.',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.mutedForeground,
-                                ),
-                              ),
-                            if (isPosted && acceptedMatch == null)
-                              TextButton(
-                                onPressed: () => context.push(
-                                  '/shipment/${widget.shipmentId}/carriers',
-                                ),
-                                child: const Text('Choose another traveller'),
-                              ),
-                          ],
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
-                      ),
+                  ),
+                  const SizedBox(height: 10),
+                  ...matches.map(
+                    (m) => _ShipmentMatchCard(
+                      match: m,
+                      isPosted: isPosted,
+                      acceptedMatch: acceptedMatch,
                     ),
+                  ),
+                ],
+                if (isPosted && !hasAnyMatch && isSender) ...[
+                  const SizedBox(height: 24),
+                  _CarriersInlineSection(
+                    shipmentId: widget.shipmentId,
+                    shipment: s,
+                    busyTripId: _busyTripId,
+                    onSelect: _selectCarrier,
                   ),
                 ],
                 const SizedBox(height: 24),
@@ -579,6 +613,221 @@ class _ShipmentDetailScreenState extends ConsumerState<ShipmentDetailScreen> {
             ),
           );
         },
+      ),
+    ),
+  );
+  }
+}
+
+class _ShipmentMatchCard extends StatelessWidget {
+  const _ShipmentMatchCard({
+    required this.match,
+    required this.isPosted,
+    required this.acceptedMatch,
+  });
+
+  final MatchDto match;
+  final bool isPosted;
+  final MatchDto? acceptedMatch;
+
+  @override
+  Widget build(BuildContext context) {
+    final tripId = match.tripId;
+    final (statusBg, statusFg) = _matchStatusColors(match.status);
+    final hasHandover = (match.carrierOriginAddressText ?? '')
+            .trim()
+            .isNotEmpty ||
+        (match.carrierDestinationAddressText ?? '').trim().isNotEmpty;
+    final hasTripLink = tripId != null && tripId.isNotEmpty;
+    final hasTopContent = hasTripLink || hasHandover;
+
+    final bodyChildren = <Widget>[
+      if (hasTripLink)
+        TextButton.icon(
+          style: TextButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            padding: EdgeInsets.zero,
+            foregroundColor: AppColors.primary,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          onPressed: () => context.push('/trip/$tripId'),
+          icon: const Icon(Icons.flight_outlined, size: 18),
+          label: const Text('View carrier trip'),
+        ),
+      if (hasHandover) ...[
+        if (hasTripLink) const SizedBox(height: 8),
+        Text(
+          'Handover',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.6,
+            color: AppColors.mutedForeground,
+          ),
+        ),
+        const SizedBox(height: 4),
+        if ((match.carrierOriginAddressText ?? '').trim().isNotEmpty)
+          Text(
+            'Pickup: ${match.carrierOriginAddressText}',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.mutedForeground,
+              height: 1.35,
+            ),
+          ),
+        if ((match.carrierDestinationAddressText ?? '').trim().isNotEmpty)
+          Text(
+            'Drop-off: ${match.carrierDestinationAddressText}',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.mutedForeground,
+              height: 1.35,
+            ),
+          ),
+      ],
+      if (match.status == 'OFFERED')
+        Padding(
+          padding: EdgeInsets.only(top: hasTopContent ? 10 : 0),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.schedule_outlined,
+                    size: 18,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Request sent. Waiting for the carrier to accept.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: AppColors.foreground.withValues(alpha: 0.88),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.foreground.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.06),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: AppColors.border.withValues(alpha: 0.85),
+                    ),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.handshake_outlined,
+                      size: 24,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Carrier match',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: AppColors.foreground,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'MATCH ID',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.8,
+                              color: AppColors.mutedForeground,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          SelectableText(
+                            _compactMatchId(match.matchId),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.foreground.withValues(alpha: 0.9),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusBg,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        match.status,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: statusFg,
+                          letterSpacing: 0.35,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (bodyChildren.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: bodyChildren,
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -614,13 +863,7 @@ class _NotFoundView extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: () {
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  context.go('/browse/orders');
-                }
-              },
+              onPressed: () => ziproPopOrHome(context),
               child: const Text('Back'),
             ),
           ],
@@ -842,6 +1085,138 @@ class _AddressBlock extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Inline carriers section shown on the shipment detail page when the order is
+/// posted by the current user and no match exists yet. Mirrors the web card at
+/// `zipro_website_new/app/(app)/shipments/[shipmentId]/page.tsx` (lines 574–617).
+class _CarriersInlineSection extends ConsumerWidget {
+  const _CarriersInlineSection({
+    required this.shipmentId,
+    required this.shipment,
+    required this.busyTripId,
+    required this.onSelect,
+  });
+
+  final String shipmentId;
+  final ShipmentOrderDto shipment;
+  final String? busyTripId;
+  final Future<void> Function(String tripId) onSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(matchableCarriersProvider(shipmentId));
+    return async.when(
+      loading: () => const _CarriersCard(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            children: [
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(height: 12),
+              Text('Looking for travellers on your route…'),
+            ],
+          ),
+        ),
+      ),
+      error: (_, __) => _CarriersEmptyCard(shipment: shipment),
+      data: (carriers) {
+        if (carriers.isEmpty) return _CarriersEmptyCard(shipment: shipment);
+        return _CarriersCard(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Travellers on your route',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              for (final c in carriers)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: CarrierCard(
+                    carrier: c,
+                    isCreating: busyTripId == c.tripId,
+                    onSelect: () => onSelect(c.tripId),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CarriersCard extends StatelessWidget {
+  const _CarriersCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(24),
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Padding(padding: padding, child: child),
+    );
+  }
+}
+
+class _CarriersEmptyCard extends StatelessWidget {
+  const _CarriersEmptyCard({required this.shipment});
+
+  final ShipmentOrderDto shipment;
+
+  @override
+  Widget build(BuildContext context) {
+    final origin =
+        cityCountryLabel(shipment.originCity, shipment.originCountryCode);
+    final dest = cityCountryLabel(
+      shipment.destinationCity,
+      shipment.destinationCountryCode,
+    );
+    return _CarriersCard(
+      child: Column(
+        children: [
+          Icon(
+            Icons.flight_takeoff,
+            size: 48,
+            color: AppColors.mutedForeground,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Travellers on your route will appear here',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'When someone adds a trip from $origin to $dest, '
+            "they'll show up here. You can check back anytime.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: AppColors.mutedForeground,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

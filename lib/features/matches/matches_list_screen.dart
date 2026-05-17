@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../../core/models/delivery_models.dart';
 import '../../core/network/dio_error_mapper.dart';
 import '../repositories_providers.dart';
@@ -15,9 +16,13 @@ class MatchesListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(myMatchesProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('My matches')),
-      body: async.when(
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: ziproLeadingBackOrHome(context),
+          title: const Text('My matches'),
+        ),
+        body: async.when(
         data: (list) {
           if (list.isEmpty) {
             return const Center(child: Text('No matches yet'));
@@ -43,6 +48,7 @@ class MatchesListScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(dioErrorMessage(e))),
       ),
-    );
+    ),
+  );
   }
 }

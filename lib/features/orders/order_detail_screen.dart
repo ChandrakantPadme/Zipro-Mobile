@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../../core/models/delivery_models.dart';
 import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
@@ -169,21 +170,13 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     final asyncOrder = ref.watch(orderDetailProvider(widget.orderId));
     final userId = ref.watch(authNotifierProvider).user?.userId;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Order'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/orders');
-            }
-          },
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Order'),
+          leading: ziproLeadingBackOrHome(context),
         ),
-      ),
-      body: asyncOrder.when(
+        body: asyncOrder.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => _NotFoundView(message: dioErrorMessage(e)),
         data: (order) {
@@ -275,7 +268,8 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           );
         },
       ),
-    );
+    ),
+  );
   }
 }
 
@@ -987,13 +981,7 @@ class _NotFoundView extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             FilledButton(
-              onPressed: () {
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  context.go('/orders');
-                }
-              },
+              onPressed: () => ziproPopOrHome(context),
               child: const Text('Back to orders'),
             ),
           ],

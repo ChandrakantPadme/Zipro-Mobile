@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 import '../../core/env/app_config.dart';
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../../core/models/delivery_models.dart';
 import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
@@ -184,21 +185,13 @@ class _OrderPayScreenState extends ConsumerState<OrderPayScreen> {
   Widget build(BuildContext context) {
     final asyncOrder = ref.watch(orderDetailProvider(widget.orderId));
     final asyncPayment = ref.watch(paymentByOrderIdProvider(widget.orderId));
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Payment'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/order/${widget.orderId}');
-            }
-          },
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Payment'),
+          leading: ziproLeadingBackOrHome(context),
         ),
-      ),
-      body: asyncOrder.when(
+        body: asyncOrder.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text(dioErrorMessage(e))),
         data: (order) {
@@ -280,7 +273,8 @@ class _OrderPayScreenState extends ConsumerState<OrderPayScreen> {
           );
         },
       ),
-    );
+    ),
+  );
   }
 }
 

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/env/app_config.dart';
+import '../../core/navigation/zipro_pop_or_home.dart';
 import '../../core/network/dio_error_mapper.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/create_form_ui.dart';
@@ -486,15 +487,13 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
             productCount >= 1)
         : (double.tryParse(_parcelValue.text) != null && deliveryFeeUi != null);
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.go('/dashboard'),
+    return ZiproPopScope(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: ziproLeadingBackOrHome(context),
+          title: const Text('Create New Order'),
         ),
-        title: const Text('Create New Order'),
-      ),
-      body: SafeArea(
+        body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= CreateFormUi.wideBreakpoint;
@@ -1036,6 +1035,7 @@ class _SendOrShopScreenState extends ConsumerState<SendOrShopScreen> {
           },
         ),
       ),
-    );
+    ),
+  );
   }
 }
