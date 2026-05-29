@@ -6,12 +6,16 @@ class DashboardPreviewRibbon extends StatelessWidget {
   const DashboardPreviewRibbon({
     super.key,
     required this.title,
+    required this.backgroundColor,
+    required this.accentColor,
     required this.onViewAll,
     required this.items,
     this.emptyMessage = 'Nothing here yet',
   });
 
   final String title;
+  final Color backgroundColor;
+  final Color accentColor;
   final VoidCallback onViewAll;
   final List<Widget> items;
   final String emptyMessage;
@@ -20,12 +24,12 @@ class DashboardPreviewRibbon extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: accentColor.withValues(alpha: 0.18)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.foreground.withValues(alpha: 0.04),
+            color: accentColor.withValues(alpha: 0.10),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -52,7 +56,7 @@ class DashboardPreviewRibbon extends StatelessWidget {
                 TextButton(
                   onPressed: onViewAll,
                   style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primary,
+                    foregroundColor: accentColor,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -85,7 +89,7 @@ class DashboardPreviewRibbon extends StatelessWidget {
                   if (i > 0)
                     Divider(
                       height: 1,
-                      color: AppColors.border.withValues(alpha: 0.7),
+                      color: accentColor.withValues(alpha: 0.14),
                     ),
                   items[i],
                 ],
@@ -104,12 +108,14 @@ class DashboardPreviewRow extends StatelessWidget {
     required this.subtitle,
     required this.statusLabel,
     required this.onTap,
+    this.accentColor,
   });
 
   final String title;
   final String subtitle;
   final String statusLabel;
   final VoidCallback onTap;
+  final Color? accentColor;
 
   @override
   Widget build(BuildContext context) {
@@ -155,12 +161,18 @@ class DashboardPreviewRow extends StatelessWidget {
               Chip(
                 label: Text(
                   statusLabel,
-                  style: const TextStyle(fontSize: 10),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: accentColor ?? AppColors.foreground,
+                  ),
                 ),
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                side: BorderSide(color: AppColors.border),
-                backgroundColor: AppColors.secondary.withValues(alpha: 0.35),
+                side: BorderSide(
+                  color: (accentColor ?? AppColors.border)
+                      .withValues(alpha: 0.35),
+                ),
+                backgroundColor: Colors.white.withValues(alpha: 0.72),
               ),
               const SizedBox(width: 4),
               Icon(

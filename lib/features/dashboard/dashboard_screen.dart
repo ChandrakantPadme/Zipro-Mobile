@@ -296,11 +296,15 @@ class DashboardScreen extends ConsumerWidget {
                         const SizedBox(height: 10),
                         DashboardPreviewRibbon(
                           title: 'Live Orders',
+                          backgroundColor:
+                              Color.lerp(Colors.white, AppColors.primary, 0.08)!,
+                          accentColor: AppColors.primary,
                           onViewAll: () => context.go('/browse/orders'),
                           emptyMessage: 'No live orders right now',
                           items: [
                             for (final o in _liveOrdersPreview(d))
                               DashboardPreviewRow(
+                                accentColor: AppColors.primary,
                                 title: cityCountryLabel(
                                       o.originCity, o.originCountryCode) +
                                   ' → ' +
@@ -316,11 +320,15 @@ class DashboardScreen extends ConsumerWidget {
                         const SizedBox(height: 10),
                         DashboardPreviewRibbon(
                           title: 'Active Trips',
+                          backgroundColor:
+                              Color.lerp(Colors.white, AppColors.accent, 0.09)!,
+                          accentColor: AppColors.accent,
                           onViewAll: () => context.go('/browse/trips'),
                           emptyMessage: 'No active trips right now',
                           items: [
                             for (final t in _activeTripsPreview(d))
                               DashboardPreviewRow(
+                                accentColor: AppColors.accent,
                                 title: cityCountryLabel(
                                         t.fromCity, t.fromCountryCode) +
                                     ' → ' +
