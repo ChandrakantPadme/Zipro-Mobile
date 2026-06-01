@@ -4,38 +4,76 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/models/delivery_models.dart';
+import '../../core/models/pagination.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/supported_cities.dart';
 import '../kyc/kyc_completion.dart';
 import '../kyc/kyc_status_provider.dart';
 import '../repositories_providers.dart';
 import 'widgets/dashboard_cta_banner.dart';
+import 'widgets/dashboard_preview_ribbon.dart';
 import 'widgets/dashboard_stat_card.dart';
+
+List<ShipmentOrderDto> _liveOrdersPreview(DashboardAggregate d) {
+  return d.availableShipments.take(1).toList();
+}
+
+List<TripDto> _activeTripsPreview(DashboardAggregate d) {
+  return d.availableTrips.take(1).toList();
+}
+
+String _tripDateLabel(String iso) {
+  if (iso.isEmpty) return '';
+  try {
+    return DateFormat('MMM dd, yyyy').format(DateTime.parse(iso).toLocal());
+  } catch (_) {
+    return iso;
+  }
+}
 
 class DashboardAggregate {
   DashboardAggregate({
     required this.myTrips,
     required this.buyerOrders,
     required this.travelerOrders,
+    required this.availableShipments,
+    required this.availableTrips,
   });
 
   final List<TripDto> myTrips;
   final List<ShipmentOrderDto> buyerOrders;
   final List<ShipmentOrderDto> travelerOrders;
+  final List<ShipmentOrderDto> availableShipments;
+  final List<TripDto> availableTrips;
 }
 
 final dashboardAggregateProvider =
     FutureProvider.autoDispose<DashboardAggregate>((ref) async {
   final tripRepo = ref.watch(tripRepositoryProvider);
   final orderRepo = ref.watch(orderRepositoryProvider);
+  final shipmentRepo = ref.watch(shipmentRepositoryProvider);
 
-  final myTripsPage = await tripRepo.getMyTrips(size: 120);
-  final buyerOrders = await orderRepo.getMyOrdersBuyer();
-  final travelerOrders = await orderRepo.getMyOrdersTraveler();
+  final results = await Future.wait([
+    tripRepo.getMyTrips(size: 120),
+    orderRepo.getMyOrdersBuyer(),
+    orderRepo.getMyOrdersTraveler(),
+    shipmentRepo.getAvailableShipments(page: 0, size: 50),
+    tripRepo.getAvailableTrips(page: 0, size: 100),
+  ]);
+
+  final myTripsPage = results[0] as PaginatedResponse<TripDto>;
+  final availableShipmentsPage =
+      results[3] as PaginatedResponse<ShipmentOrderDto>;
+  final availableTripsPage = results[4] as PaginatedResponse<TripDto>;
 
   return DashboardAggregate(
     myTrips: myTripsPage.content,
-    buyerOrders: buyerOrders,
-    travelerOrders: travelerOrders,
+    buyerOrders: results[1] as List<ShipmentOrderDto>,
+    travelerOrders: results[2] as List<ShipmentOrderDto>,
+    availableShipments: availableShipmentsPage.content,
+    availableTrips: availableTripsPage.content
+        .where((t) => t.status == 'PLANNED')
+        .toList(),
   );
 });
 
@@ -226,7 +264,7 @@ class DashboardScreen extends ConsumerWidget {
                           loading: () => const SizedBox.shrink(),
                           error: (_, __) => const SizedBox.shrink(),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
                         _DashboardStatsGrid(
                           totalOrders: totalOrders,
                           activeTrips: activeTrips,
@@ -254,6 +292,53 @@ class DashboardScreen extends ConsumerWidget {
                           subtitle:
                               'Travel and earn by carrying packages on your trip.',
                           onTap: () => context.go('/trips/create'),
+                        ),
+                        const SizedBox(height: 10),
+                        DashboardPreviewRibbon(
+                          title: 'Live Orders',
+                          backgroundColor:
+                              Color.lerp(Colors.white, AppColors.primary, 0.08)!,
+                          accentColor: AppColors.primary,
+                          onViewAll: () => context.go('/browse/orders'),
+                          emptyMessage: 'No live orders right now',
+                          items: [
+                            for (final o in _liveOrdersPreview(d))
+                              DashboardPreviewRow(
+                                accentColor: AppColors.primary,
+                                title: cityCountryLabel(
+                                      o.originCity, o.originCountryCode) +
+                                  ' → ' +
+                                  cityCountryLabel(o.destinationCity,
+                                      o.destinationCountryCode),
+                                subtitle: o.description,
+                                statusLabel: o.status,
+                                onTap: () => context.push(
+                                    '/shipment/${o.primaryId}'),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        DashboardPreviewRibbon(
+                          title: 'Active Trips',
+                          backgroundColor:
+                              Color.lerp(Colors.white, AppColors.accent, 0.09)!,
+                          accentColor: AppColors.accent,
+                          onViewAll: () => context.go('/browse/trips'),
+                          emptyMessage: 'No active trips right now',
+                          items: [
+                            for (final t in _activeTripsPreview(d))
+                              DashboardPreviewRow(
+                                accentColor: AppColors.accent,
+                                title: cityCountryLabel(
+                                        t.fromCity, t.fromCountryCode) +
+                                    ' → ' +
+                                    cityCountryLabel(
+                                        t.toCity, t.toCountryCode),
+                                subtitle: _tripDateLabel(t.departAt),
+                                statusLabel: t.status,
+                                onTap: () => context.push('/trip/${t.tripId}'),
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 20),
                       ],
@@ -322,8 +407,7 @@ class _DashboardStatsGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
-      // Width:height — lower = slightly taller cards; pairs well with icon + stats row.
-      childAspectRatio: 1.18,
+      childAspectRatio: 2.6,
       children: [
         for (final c in cards)
           DashboardStatCard(
